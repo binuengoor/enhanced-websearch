@@ -69,6 +69,31 @@ Important key-format note:
 - Vane model keys must match `/api/config` exactly.
 - Example: use `Xenova/nomic-embed-text-v1` (not `nomic-embed-text-v1`) when using the Transformers embedding provider.
 
+Environment variable defaults:
+
+- Both tool and pipe read valve defaults from container env vars at startup.
+- You can set these in the Open-WebUI container environment:
+	- `SEARXNG_URL` or `SEARXNG_BASE_URL`
+	- `VANE_URL`
+	- `FLARESOLVERR_URL`
+	- `SEARCH_RESULTS_PER_QUERY`
+	- `PAGES_TO_SCRAPE`
+	- `ENABLE_VANE_DEEP`
+	- `VANE_CHAT_MODEL_PROVIDER_ID`
+	- `VANE_CHAT_MODEL_KEY`
+	- `VANE_EMBEDDING_MODEL_PROVIDER_ID`
+	- `VANE_EMBEDDING_MODEL_KEY`
+	- `RESEARCH_MODEL` (pipe only)
+
+Advanced env overrides (internal defaults):
+
+- `REQUEST_TIMEOUT`, `FLARESOLVERR_TIMEOUT`, `VANE_TIMEOUT`
+- `CONCURRENT_SCRAPE_WORKERS`, `QUERY_VARIANTS_LIMIT`, `RRF_K`
+- `SEARCH_CATEGORIES`, `SEARCH_ENGINES`, `SEARCH_LANGUAGE`, `SEARCH_TIME_RANGE`
+- `MAX_PAGE_CONTENT_CHARS`, `MIN_CONTENT_CHARS`
+- `INJECT_DATETIME`, `DATETIME_FORMAT`, `TIMEZONE`
+- `RESEARCH_MODEL_TEMPERATURE`, `RESEARCH_MODEL_MAX_TOKENS`, `RESEARCH_MIN_ITERATIONS`, `RESEARCH_MAX_CONTEXT_SOURCES`
+
 ### 2) User Valves (per-user behavior)
 
 Configured by the user in chat/tool settings (when exposed by Open-WebUI).
@@ -154,6 +179,7 @@ Mandatory for pipe version only if you want forced planning model override:
 - The pipe script uses Open-WebUI model calls for research planning and synthesis.
 - The pipe returns concise markdown output (deep summary + top sources) instead of raw JSON.
 - In deep mode, fast evidence and Vane output are fused into consensus points plus fast-only and Vane-only additions.
+- Deep mode uses a longer internal Vane timeout and one automatic retry on read-timeout before falling back.
 - Enable `show_reasoning` only when debugging, to keep responses clean.
 - The tool version is best for attaching to a model as a callable search tool.
 - The pipe version is best for model-driven research workflows and synthesis.

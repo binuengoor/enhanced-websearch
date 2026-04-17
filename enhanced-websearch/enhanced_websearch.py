@@ -15,6 +15,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import os
 import re
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -32,6 +33,36 @@ if not logger.handlers:
     handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(handler)
     logger.setLevel(logging.INFO)
+
+
+def _env_str(name: str, default: str) -> str:
+    value = os.getenv(name)
+    return value if value else default
+
+
+def _env_int(name: str, default: int, minimum: Optional[int] = None, maximum: Optional[int] = None) -> int:
+    raw = os.getenv(name)
+    try:
+        value = int(raw) if raw is not None else default
+    except (TypeError, ValueError):
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    token = raw.strip().lower()
+    if token in {"1", "true", "yes", "on"}:
+        return True
+    if token in {"0", "false", "no", "off"}:
+        return False
+    return default
 
 
 class EventEmitter:
@@ -375,40 +406,40 @@ class PageScraper:
 
 class Tools:
     class Valves(BaseModel):
-        SEARXNG_BASE_URL: str = Field(default="http://searxng:8080", description="SearXNG base URL")
-        VANE_URL: str = Field(default="http://vane:3000", description="Vane base URL")
+        SEARXNG_BASE_URL: str = Field(default_factory=lambda: _env_str("SEARXNG_URL", _env_str("SEARXNG_BASE_URL", "http://searxng:8080")), description="SearXNG base URL")
+        VANE_URL: str = Field(default_factory=lambda: _env_str("VANE_URL", "http://vane:3000"), description="Vane base URL")
         FLARESOLVERR_URL: str = Field(
-            default="http://flaresolverr:8191/v1",
+            default_factory=lambda: _env_str("FLARESOLVERR_URL", "http://flaresolverr:8191/v1"),
             description="FlareSolverr endpoint; set empty to disable",
         )
-        SEARCH_RESULTS_PER_QUERY: int = Field(default=8, ge=3, le=20)
-        PAGES_TO_SCRAPE: int = Field(default=5, ge=1, le=12)
-        ENABLE_VANE_DEEP: bool = Field(default=True, description="Allow deep synthesis via Vane")
-        VANE_CHAT_MODEL_PROVIDER_ID: str = Field(default="", description="Vane chat provider ID")
-        VANE_CHAT_MODEL_KEY: str = Field(default="auto-main", description="Vane chat model key")
-        VANE_EMBEDDING_MODEL_PROVIDER_ID: str = Field(default="", description="Vane embedding provider ID")
-        VANE_EMBEDDING_MODEL_KEY: str = Field(default="Xenova/nomic-embed-text-v1", description="Vane embedding model key")
+        SEARCH_RESULTS_PER_QUERY: int = Field(default_factory=lambda: _env_int("SEARCH_RESULTS_PER_QUERY", 8, 3, 20), ge=3, le=20)
+        PAGES_TO_SCRAPE: int = Field(default_factory=lambda: _env_int("PAGES_TO_SCRAPE", 5, 1, 12), ge=1, le=12)
+        ENABLE_VANE_DEEP: bool = Field(default_factory=lambda: _env_bool("ENABLE_VANE_DEEP", True), description="Allow deep synthesis via Vane")
+        VANE_CHAT_MODEL_PROVIDER_ID: str = Field(default_factory=lambda: _env_str("VANE_CHAT_MODEL_PROVIDER_ID", ""), description="Vane chat provider ID")
+        VANE_CHAT_MODEL_KEY: str = Field(default_factory=lambda: _env_str("VANE_CHAT_MODEL_KEY", "auto-main"), description="Vane chat model key")
+        VANE_EMBEDDING_MODEL_PROVIDER_ID: str = Field(default_factory=lambda: _env_str("VANE_EMBEDDING_MODEL_PROVIDER_ID", ""), description="Vane embedding provider ID")
+        VANE_EMBEDDING_MODEL_KEY: str = Field(default_factory=lambda: _env_str("VANE_EMBEDDING_MODEL_KEY", "Xenova/nomic-embed-text-v1"), description="Vane embedding model key")
 
         INTERNAL_DEFAULTS: ClassVar[Dict[str, Any]] = {
-            "REQUEST_TIMEOUT": 15,
-            "FLARESOLVERR_TIMEOUT": 60,
-            "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "CONCURRENT_SCRAPE_WORKERS": 4,
-            "QUERY_VARIANTS_LIMIT": 4,
-            "RRF_K": 60,
-            "SEARCH_CATEGORIES": "general",
-            "SEARCH_ENGINES": "",
-            "SEARCH_LANGUAGE": "en",
-            "SEARCH_TIME_RANGE": "",
-            "MAX_PAGE_CONTENT_CHARS": 25000,
-            "MIN_CONTENT_CHARS": 80,
-            "INJECT_DATETIME": True,
-            "DATETIME_FORMAT": "%Y-%m-%d %A %B %d",
-            "TIMEZONE": "UTC",
-            "VANE_TIMEOUT": 45,
-            "RESEARCH_MIN_ITERATIONS": 2,
-            "RESEARCH_MAX_CONTEXT_SOURCES": 20,
-            "IGNORED_DOMAINS": "",
+            "REQUEST_TIMEOUT": _env_int("REQUEST_TIMEOUT", 15, 3, 300),
+            "FLARESOLVERR_TIMEOUT": _env_int("FLARESOLVERR_TIMEOUT", 60, 5, 300),
+            "USER_AGENT": _env_str("USER_AGENT", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"),
+            "CONCURRENT_SCRAPE_WORKERS": _env_int("CONCURRENT_SCRAPE_WORKERS", 4, 1, 12),
+            "QUERY_VARIANTS_LIMIT": _env_int("QUERY_VARIANTS_LIMIT", 4, 1, 8),
+            "RRF_K": _env_int("RRF_K", 60, 1, 200),
+            "SEARCH_CATEGORIES": _env_str("SEARCH_CATEGORIES", "general"),
+            "SEARCH_ENGINES": _env_str("SEARCH_ENGINES", ""),
+            "SEARCH_LANGUAGE": _env_str("SEARCH_LANGUAGE", "en"),
+            "SEARCH_TIME_RANGE": _env_str("SEARCH_TIME_RANGE", ""),
+            "MAX_PAGE_CONTENT_CHARS": _env_int("MAX_PAGE_CONTENT_CHARS", 25000, 2000, 200000),
+            "MIN_CONTENT_CHARS": _env_int("MIN_CONTENT_CHARS", 80, 20, 2000),
+            "INJECT_DATETIME": _env_bool("INJECT_DATETIME", True),
+            "DATETIME_FORMAT": _env_str("DATETIME_FORMAT", "%Y-%m-%d %A %B %d"),
+            "TIMEZONE": _env_str("TIMEZONE", "UTC"),
+            "VANE_TIMEOUT": _env_int("VANE_TIMEOUT", 90, 10, 300),
+            "RESEARCH_MIN_ITERATIONS": _env_int("RESEARCH_MIN_ITERATIONS", 2, 1, 10),
+            "RESEARCH_MAX_CONTEXT_SOURCES": _env_int("RESEARCH_MAX_CONTEXT_SOURCES", 20, 5, 60),
+            "IGNORED_DOMAINS": _env_str("IGNORED_DOMAINS", ""),
         }
 
         def __getattr__(self, name: str) -> Any:
@@ -776,11 +807,23 @@ class Tools:
         }
 
         try:
-            resp = requests.post(
-                f"{self.valves.VANE_URL.rstrip('/')}/api/search",
-                json=payload,
-                timeout=self.valves.VANE_TIMEOUT,
-            )
+            timeout = self.valves.VANE_TIMEOUT
+            resp = None
+            for attempt in range(2):
+                try:
+                    resp = requests.post(
+                        f"{self.valves.VANE_URL.rstrip('/')}/api/search",
+                        json=payload,
+                        timeout=timeout,
+                    )
+                    break
+                except requests.exceptions.ReadTimeout:
+                    if attempt == 0:
+                        timeout = min(timeout + 30, 180)
+                        continue
+                    raise
+            if resp is None:
+                return {"enabled": True, "error": "Vane request did not return a response", "sources": []}
             resp.raise_for_status()
             data = resp.json()
             sources = []
