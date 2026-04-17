@@ -56,11 +56,11 @@ Pipe script valves (10):
 - FLARESOLVERR_URL
 - SEARCH_RESULTS_PER_QUERY
 - PAGES_TO_SCRAPE
-- ENABLE_VANE_DEEP
 - VANE_CHAT_MODEL_PROVIDER_ID
 - VANE_CHAT_MODEL_KEY
 - VANE_EMBEDDING_MODEL_PROVIDER_ID
 - VANE_EMBEDDING_MODEL_KEY
+- RESEARCH_MODEL
 
 Everything else uses internal defaults tuned for typical self-hosted setups.
 
@@ -137,7 +137,7 @@ None. Tool research planning is heuristic by default and does not require a sepa
 
 Mandatory for pipe version only if you want forced planning model override:
 
-- No mandatory override valve. Pipe planning uses the active Open-WebUI chat model by default.
+- RESEARCH_MODEL is optional. If empty, pipe planning uses the active Open-WebUI chat model by default.
 
 ## Notes
 

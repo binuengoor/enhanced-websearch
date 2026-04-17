@@ -235,11 +235,11 @@ class Pipe:
         FLARESOLVERR_URL: str = Field(default="http://flaresolverr:8191/v1", description="FlareSolverr endpoint; set empty to disable")
         SEARCH_RESULTS_PER_QUERY: int = Field(default=8, ge=3, le=20)
         PAGES_TO_SCRAPE: int = Field(default=5, ge=1, le=12)
-        ENABLE_VANE_DEEP: bool = Field(default=True, description="Allow deep synthesis via Vane")
         VANE_CHAT_MODEL_PROVIDER_ID: str = Field(default="", description="Vane chat provider ID")
         VANE_CHAT_MODEL_KEY: str = Field(default="auto-main", description="Vane chat model key")
         VANE_EMBEDDING_MODEL_PROVIDER_ID: str = Field(default="", description="Vane embedding provider ID")
         VANE_EMBEDDING_MODEL_KEY: str = Field(default="openrouter/perplexity/pplx-embed-v1-0.6b", description="Vane embedding model key")
+        RESEARCH_MODEL: str = Field(default="", description="Optional Open-WebUI model key for research planning; leave empty to use active chat model")
 
         INTERNAL_DEFAULTS: ClassVar[Dict[str, Any]] = {
             "REQUEST_TIMEOUT": 15,
@@ -258,7 +258,7 @@ class Pipe:
             "DATETIME_FORMAT": "%Y-%m-%d %A %B %d",
             "TIMEZONE": "UTC",
             "VANE_TIMEOUT": 45,
-            "RESEARCH_MODEL": "",
+            "ENABLE_VANE_DEEP": True,
             "RESEARCH_MODEL_TEMPERATURE": 0.3,
             "RESEARCH_MODEL_MAX_TOKENS": 4096,
             "RESEARCH_MIN_ITERATIONS": 2,
