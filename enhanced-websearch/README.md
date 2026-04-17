@@ -43,11 +43,11 @@ Tool script valves (10):
 - FLARESOLVERR_URL
 - SEARCH_RESULTS_PER_QUERY
 - PAGES_TO_SCRAPE
-- CONCURRENT_SCRAPE_WORKERS
 - ENABLE_VANE_DEEP
 - VANE_CHAT_MODEL_PROVIDER_ID
+- VANE_CHAT_MODEL_KEY
 - VANE_EMBEDDING_MODEL_PROVIDER_ID
-- RESEARCH_BACKEND (heuristic or ollama)
+- VANE_EMBEDDING_MODEL_KEY
 
 Pipe script valves (10):
 
@@ -56,11 +56,11 @@ Pipe script valves (10):
 - FLARESOLVERR_URL
 - SEARCH_RESULTS_PER_QUERY
 - PAGES_TO_SCRAPE
-- CONCURRENT_SCRAPE_WORKERS
 - ENABLE_VANE_DEEP
 - VANE_CHAT_MODEL_PROVIDER_ID
+- VANE_CHAT_MODEL_KEY
 - VANE_EMBEDDING_MODEL_PROVIDER_ID
-- RESEARCH_MODEL
+- VANE_EMBEDDING_MODEL_KEY
 
 Everything else uses internal defaults tuned for typical self-hosted setups.
 
@@ -132,21 +132,19 @@ Mandatory if deep mode is enabled (selected or auto-escalated):
 - VANE_CHAT_MODEL_PROVIDER_ID must be set.
 - VANE_EMBEDDING_MODEL_PROVIDER_ID must be set.
 
-Mandatory for tool version only when RESEARCH_BACKEND=ollama:
-
-- Internal defaults target OLLAMA_URL=http://localhost:11434/api/generate and OLLAMA_MODEL=llama3.2.
-- If your Ollama endpoint/model differs, keep RESEARCH_BACKEND=heuristic or edit script internals.
+Tool-specific research backend requirements:
+None. Tool research planning is heuristic by default and does not require a separate model backend valve.
 
 Mandatory for pipe version only if you want forced planning model override:
 
-- RESEARCH_MODEL is optional. If empty, the pipe falls back to the active Open-WebUI model from the current chat request.
+- No mandatory override valve. Pipe planning uses the active Open-WebUI chat model by default.
 
 ## Notes
 
 - This script does not write to the Open-WebUI database.
 - Both scripts are import-ready as standalone Open-WebUI extensions.
 - Deep mode requires Vane model provider IDs to be configured.
-- The tool script uses heuristic research planning by default. Set RESEARCH_BACKEND=ollama to enable Ollama-assisted planning.
+- The tool script uses heuristic research planning by default.
 - Advanced tuning knobs (timeouts, RRF, language, time range, token limits) are intentionally internal defaults in v1.1 to keep the valve surface small.
 - The pipe script uses Open-WebUI model calls for research planning and synthesis.
 - The tool version is best for attaching to a model as a callable search tool.

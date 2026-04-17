@@ -383,16 +383,17 @@ class Tools:
         )
         SEARCH_RESULTS_PER_QUERY: int = Field(default=8, ge=3, le=20)
         PAGES_TO_SCRAPE: int = Field(default=5, ge=1, le=12)
-        CONCURRENT_SCRAPE_WORKERS: int = Field(default=4, ge=1, le=12)
         ENABLE_VANE_DEEP: bool = Field(default=True, description="Allow deep synthesis via Vane")
         VANE_CHAT_MODEL_PROVIDER_ID: str = Field(default="", description="Vane chat provider ID")
+        VANE_CHAT_MODEL_KEY: str = Field(default="auto-main", description="Vane chat model key")
         VANE_EMBEDDING_MODEL_PROVIDER_ID: str = Field(default="", description="Vane embedding provider ID")
-        RESEARCH_BACKEND: str = Field(default="heuristic", description="Follow-up query backend: ollama or heuristic")
+        VANE_EMBEDDING_MODEL_KEY: str = Field(default="openrouter/perplexity/pplx-embed-v1-0.6b", description="Vane embedding model key")
 
         INTERNAL_DEFAULTS: ClassVar[Dict[str, Any]] = {
             "REQUEST_TIMEOUT": 15,
             "FLARESOLVERR_TIMEOUT": 60,
             "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "CONCURRENT_SCRAPE_WORKERS": 4,
             "QUERY_VARIANTS_LIMIT": 4,
             "RRF_K": 60,
             "SEARCH_CATEGORIES": "general",
@@ -404,12 +405,7 @@ class Tools:
             "INJECT_DATETIME": True,
             "DATETIME_FORMAT": "%Y-%m-%d %A %B %d",
             "TIMEZONE": "UTC",
-            "VANE_CHAT_MODEL_KEY": "auto-main",
-            "VANE_EMBEDDING_MODEL_KEY": "openrouter/perplexity/pplx-embed-v1-0.6b",
             "VANE_TIMEOUT": 45,
-            "OLLAMA_URL": "http://localhost:11434/api/generate",
-            "OLLAMA_MODEL": "llama3.2",
-            "OLLAMA_TIMEOUT": 20,
             "RESEARCH_MIN_ITERATIONS": 2,
             "RESEARCH_MAX_CONTEXT_SOURCES": 20,
             "IGNORED_DOMAINS": "",
@@ -826,28 +822,6 @@ class Tools:
             return f"{original_query} implementation details"
         return f"{original_query} limitations tradeoffs"
 
-    def _ollama_generate(self, prompt: str, temperature: float, num_predict: int) -> Optional[str]:
-        try:
-            resp = requests.post(
-                self.valves.OLLAMA_URL,
-                json={
-                    "model": self.valves.OLLAMA_MODEL,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "temperature": temperature,
-                        "num_predict": num_predict,
-                    },
-                },
-                timeout=self.valves.OLLAMA_TIMEOUT,
-            )
-            if resp.status_code == 200:
-                text = resp.json().get("response", "").strip()
-                return text if text else None
-        except Exception as exc:
-            logger.debug("Ollama helper call failed: %s", exc)
-        return None
-
     def _next_research_query(
         self,
         original_query: str,
@@ -857,21 +831,6 @@ class Tools:
     ) -> str:
         if iterations_used == 1:
             return enriched_query
-
-        if self.valves.RESEARCH_BACKEND.lower() == "ollama":
-            summary = "\n".join(
-                f"- {p.get('title', 'Untitled')}: {p.get('content', '')[:220]}"
-                for p in pages[-6:]
-            )
-            prompt = (
-                f"Original query: {original_query}\n\n"
-                f"Collected findings:\n{summary[:3500]}\n\n"
-                "Generate ONE focused follow-up web search query that fills the most critical gap. "
-                "Return only the query text."
-            )
-            candidate = self._ollama_generate(prompt, temperature=0.3, num_predict=80)
-            if candidate:
-                return candidate.strip().strip('"')
 
         return self._heuristic_followup_query(original_query, pages)
 
@@ -891,20 +850,6 @@ class Tools:
             return False
         if coverage >= 0.8:
             return redundancy < 0.8 and len(pages) < max_iterations * 2
-
-        if self.valves.RESEARCH_BACKEND.lower() == "ollama":
-            prompt = (
-                f"Original query: {original_query}\n"
-                f"Cycle: {cycle}/{max_iterations}\n"
-                f"Pages gathered: {len(pages)}\n"
-                f"Coverage: {round(coverage, 3)}\n"
-                f"Redundancy: {round(redundancy, 3)}\n"
-                f"Recent titles: {[p.get('title', '') for p in pages[-5:]]}\n\n"
-                "Reply with only CONTINUE or STOP."
-            )
-            decision = self._ollama_generate(prompt, temperature=0.1, num_predict=20)
-            if decision:
-                return decision.upper().startswith("CONTINUE")
 
         # Heuristic fallback: continue while evidence is still sparse or diverse.
         return len(pages) < max(6, cycle * 2) or coverage < 0.5 or redundancy < 0.55

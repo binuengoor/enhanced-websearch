@@ -235,16 +235,17 @@ class Pipe:
         FLARESOLVERR_URL: str = Field(default="http://flaresolverr:8191/v1", description="FlareSolverr endpoint; set empty to disable")
         SEARCH_RESULTS_PER_QUERY: int = Field(default=8, ge=3, le=20)
         PAGES_TO_SCRAPE: int = Field(default=5, ge=1, le=12)
-        CONCURRENT_SCRAPE_WORKERS: int = Field(default=4, ge=1, le=12)
         ENABLE_VANE_DEEP: bool = Field(default=True, description="Allow deep synthesis via Vane")
         VANE_CHAT_MODEL_PROVIDER_ID: str = Field(default="", description="Vane chat provider ID")
+        VANE_CHAT_MODEL_KEY: str = Field(default="auto-main", description="Vane chat model key")
         VANE_EMBEDDING_MODEL_PROVIDER_ID: str = Field(default="", description="Vane embedding provider ID")
-        RESEARCH_MODEL: str = Field(default="", description="Open-WebUI configured model key used for research planning and synthesis")
+        VANE_EMBEDDING_MODEL_KEY: str = Field(default="openrouter/perplexity/pplx-embed-v1-0.6b", description="Vane embedding model key")
 
         INTERNAL_DEFAULTS: ClassVar[Dict[str, Any]] = {
             "REQUEST_TIMEOUT": 15,
             "FLARESOLVERR_TIMEOUT": 60,
             "USER_AGENT": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "CONCURRENT_SCRAPE_WORKERS": 4,
             "QUERY_VARIANTS_LIMIT": 4,
             "RRF_K": 60,
             "SEARCH_CATEGORIES": "general",
@@ -256,9 +257,8 @@ class Pipe:
             "INJECT_DATETIME": True,
             "DATETIME_FORMAT": "%Y-%m-%d %A %B %d",
             "TIMEZONE": "UTC",
-            "VANE_CHAT_MODEL_KEY": "auto-main",
-            "VANE_EMBEDDING_MODEL_KEY": "openrouter/perplexity/pplx-embed-v1-0.6b",
             "VANE_TIMEOUT": 45,
+            "RESEARCH_MODEL": "",
             "RESEARCH_MODEL_TEMPERATURE": 0.3,
             "RESEARCH_MODEL_MAX_TOKENS": 4096,
             "RESEARCH_MIN_ITERATIONS": 2,
@@ -373,7 +373,7 @@ class Pipe:
         return missing[:5]
 
     def _resolve_research_model(self, body: dict) -> Optional[str]:
-        configured = self._cfg("RESEARCH_MODEL", None)
+        configured = getattr(self.valves, "RESEARCH_MODEL", "")
         if configured:
             return configured
         model = body.get("model")
@@ -514,7 +514,7 @@ class Pipe:
             return {"enabled": True, "error": str(exc), "sources": []}
 
     async def _llm_call(self, request: Any, user: Any, messages: List[Dict[str, str]], model: Optional[str] = None, temperature: float = 0.3, max_tokens: int = 4096) -> str:
-        model = model or self.valves.RESEARCH_MODEL or "default"
+        model = model or "default"
         payload = {"model": model, "messages": messages, "stream": False, "temperature": temperature, "max_tokens": max_tokens}
         response = await generate_chat_completion(request, payload, user=user)
         if isinstance(response, dict):
