@@ -65,6 +65,16 @@ def _env_bool(name: str, default: bool) -> bool:
     return default
 
 
+LOW_CONFIDENCE_VANE_PATTERNS = [
+    "sorry i could not find any relevant information",
+    "would you like me to search again",
+    "unable to share the specific",
+    "you might want to check",
+    "no search results",
+    "ask something else",
+]
+
+
 class EventEmitter:
     def __init__(self, event_emitter: Optional[Callable[[dict], Any]]):
         self.event_emitter = event_emitter
@@ -903,6 +913,19 @@ class Tools:
             deduped.append(line)
         return deduped[:limit]
 
+    def _is_meaningful_vane_response(self, deep_synthesis: Optional[Dict[str, Any]]) -> bool:
+        if not deep_synthesis or deep_synthesis.get("error"):
+            return False
+        message = (deep_synthesis.get("message") or "").strip()
+        if len(message) < 120:
+            return False
+        lower = message.lower()
+        if any(pattern in lower for pattern in LOW_CONFIDENCE_VANE_PATTERNS):
+            return False
+        if not deep_synthesis.get("sources") and len(set(re.findall(r"[a-zA-Z]{3,}", lower))) < 14:
+            return False
+        return True
+
     def _term_overlap(self, left: str, right: str) -> float:
         a = self._term_signature(left)
         b = self._term_signature(right)
@@ -922,6 +945,15 @@ class Tools:
                 "reason": "deep_synthesis_unavailable",
                 "consensus": [],
                 "fast_additions": [],
+                "vane_additions": [],
+            }
+
+        if not self._is_meaningful_vane_response(deep_synthesis):
+            return {
+                "enabled": False,
+                "reason": "deep_synthesis_low_confidence",
+                "consensus": [],
+                "fast_additions": self._fast_bullets(fast_pages)[:5],
                 "vane_additions": [],
             }
 
@@ -1211,25 +1243,41 @@ class Tools:
         # ------------------------------------------------------------------
         # FAST / DEEP / AUTO
         # ------------------------------------------------------------------
-        fused, scraped, failures, variants = await self._search_and_scrape(
-            enriched_query, emitter
-        )
+        deep_synthesis = None
+        deep_fusion = None
+
+        if requested_mode == "deep":
+            if show_status:
+                await emitter.status("Deep mode: querying Vane first")
+            deep_synthesis = await self._vane_deep_search(enriched_query, source_mode, depth)
+            if show_status:
+                await emitter.status("Deep mode: enriching with SearXNG evidence")
+
+        fused, scraped, failures, variants = await self._search_and_scrape(enriched_query, emitter)
 
         if not fused:
+            selected_no_results_mode = "fast" if requested_mode == "auto" else requested_mode
+            if requested_mode == "deep" and deep_synthesis:
+                selected_no_results_mode = (
+                    "deep"
+                    if self._is_meaningful_vane_response(deep_synthesis)
+                    else "fast_fallback"
+                )
             output = {
                 "query": query,
                 "query_used": enriched_query,
-                "mode": "fast" if requested_mode == "auto" else requested_mode,
+                "mode": selected_no_results_mode,
                 "results_scraped": [],
                 "results_ranked": [],
-                "deep_synthesis": None,
+                "deep_synthesis": deep_synthesis,
                 "reasoning": {
                     "mode_requested": requested_mode,
-                    "mode_selected": "fast" if requested_mode == "auto" else requested_mode,
+                    "mode_selected": selected_no_results_mode,
                     "mode_prefix_override": mode_prefix_override,
                     "search_failures": failures,
                     "query_variants": variants,
                     "datetime_context": dt_info,
+                    "vane_meaningful": self._is_meaningful_vane_response(deep_synthesis),
                 },
                 "error": "No search results returned from SearXNG across all query variants",
             }
@@ -1257,20 +1305,22 @@ class Tools:
 
         complex_query = self._is_complex_query(query)
 
-        deep_synthesis = None
-        deep_fusion = None
         if selected_mode == "deep":
-            if show_status:
-                await emitter.status("Escalating to deep synthesis via Vane")
-            deep_synthesis = await self._vane_deep_search(enriched_query, source_mode, depth)
+            if deep_synthesis is None:
+                if show_status:
+                    await emitter.status("Escalating to deep synthesis via Vane")
+                deep_synthesis = await self._vane_deep_search(enriched_query, source_mode, depth)
             deep_fusion = self._fuse_deep_signals(scraped, deep_synthesis)
 
-            # Best-of-both behavior: if deep fails, keep fast evidence as fallback.
-            if deep_synthesis and deep_synthesis.get("error"):
+            # Best-of-both behavior: if deep is weak or fails, keep fast evidence as fallback.
+            if deep_synthesis and (
+                deep_synthesis.get("error")
+                or not self._is_meaningful_vane_response(deep_synthesis)
+            ):
                 selected_mode = "fast_fallback"
                 if show_status:
                     await emitter.status(
-                        "Vane deep synthesis failed; returning fast pipeline evidence"
+                        "Vane deep synthesis was weak or failed; returning fast pipeline evidence"
                     )
 
         if include_citations:

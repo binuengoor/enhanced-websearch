@@ -82,6 +82,16 @@ def _env_float(name: str, default: float, minimum: Optional[float] = None, maxim
     return value
 
 
+LOW_CONFIDENCE_VANE_PATTERNS = [
+    "sorry i could not find any relevant information",
+    "would you like me to search again",
+    "unable to share the specific",
+    "you might want to check",
+    "no search results",
+    "ask something else",
+]
+
+
 class EventEmitter:
     def __init__(self, event_emitter: Optional[Callable[[dict], Any]]):
         self.event_emitter = event_emitter
@@ -703,6 +713,19 @@ class Pipe:
             deduped.append(line)
         return deduped[:limit]
 
+    def _is_meaningful_vane_response(self, deep_synthesis: Optional[Dict[str, Any]]) -> bool:
+        if not deep_synthesis or deep_synthesis.get("error"):
+            return False
+        message = (deep_synthesis.get("message") or "").strip()
+        if len(message) < 120:
+            return False
+        lower = message.lower()
+        if any(pattern in lower for pattern in LOW_CONFIDENCE_VANE_PATTERNS):
+            return False
+        if not deep_synthesis.get("sources") and len(set(re.findall(r"[a-zA-Z]{3,}", lower))) < 14:
+            return False
+        return True
+
     def _term_overlap(self, left: str, right: str) -> float:
         a = self._term_signature(left)
         b = self._term_signature(right)
@@ -722,6 +745,15 @@ class Pipe:
                 "reason": "deep_synthesis_unavailable",
                 "consensus": [],
                 "fast_additions": [],
+                "vane_additions": [],
+            }
+
+        if not self._is_meaningful_vane_response(deep_synthesis):
+            return {
+                "enabled": False,
+                "reason": "deep_synthesis_low_confidence",
+                "consensus": [],
+                "fast_additions": self._fast_bullets(fast_pages)[:5],
                 "vane_additions": [],
             }
 
@@ -807,9 +839,12 @@ class Pipe:
     ) -> str:
         lines = [f"### Enhanced Websearch ({mode})", f"Query: {query}"]
 
-        if deep_synthesis and deep_synthesis.get("message"):
+        if deep_synthesis and deep_synthesis.get("message") and self._is_meaningful_vane_response(deep_synthesis):
             lines.append("\n### Deep Synthesis")
             lines.append(self._clip(deep_synthesis.get("message", ""), 1800))
+        elif deep_synthesis and deep_synthesis.get("message"):
+            lines.append("\n### Deep Synthesis")
+            lines.append("Vane response was low-confidence; prioritizing fast-search evidence below.")
         elif deep_synthesis and deep_synthesis.get("error"):
             lines.append("\n### Deep Synthesis")
             lines.append("Vane deep synthesis failed; returning best fast-search evidence.")
@@ -875,7 +910,11 @@ class Pipe:
         deep = await self._vane_deep_search(query, source_mode, depth)
         if deep.get("error"):
             await emitter.status("Vane deep synthesis failed; using fast evidence fallback")
-        return ("fast_fallback" if deep.get("error") else "deep", deep)
+            return ("fast_fallback", deep)
+        if not self._is_meaningful_vane_response(deep):
+            await emitter.status("Vane returned low-confidence output; using fast evidence fallback")
+            return ("fast_fallback", deep)
+        return ("deep", deep)
 
     async def pipe(
         self,
@@ -983,18 +1022,28 @@ class Pipe:
                 show_reasoning=show_reasoning,
             )
 
-        fused, scraped, failures, variants = await self._search_and_scrape(enriched_query, emitter)
-        avg_quality = sum(item.get("quality_score", 0.0) for item in scraped) / len(scraped) if scraped else 0.0
-        coverage = sum(1 for item in scraped if len(item.get("content", "")) >= self.valves.MIN_CONTENT_CHARS)
-        selected_mode = requested_mode
-        if requested_mode == "auto":
-            selected_mode = "deep" if (self._is_complex_query(user_query) or avg_quality < 0.28 or coverage < max(2, self.valves.PAGES_TO_SCRAPE // 2)) else "fast"
-
         deep_synthesis = None
         deep_fusion = None
-        if selected_mode == "deep":
-            mode_used, deep_synthesis = await self._vane_or_fast(enriched_query, "web", "balanced", emitter)
-            selected_mode = mode_used
+        selected_mode = requested_mode
+
+        if requested_mode == "deep":
+            await emitter.status("Deep mode: querying Vane first")
+            selected_mode, deep_synthesis = await self._vane_or_fast(enriched_query, "web", "balanced", emitter)
+            await emitter.status("Deep mode: enriching with SearXNG evidence")
+            fused, scraped, failures, variants = await self._search_and_scrape(enriched_query, emitter)
+        else:
+            fused, scraped, failures, variants = await self._search_and_scrape(enriched_query, emitter)
+            avg_quality = sum(item.get("quality_score", 0.0) for item in scraped) / len(scraped) if scraped else 0.0
+            coverage = sum(1 for item in scraped if len(item.get("content", "")) >= self.valves.MIN_CONTENT_CHARS)
+            if requested_mode == "auto":
+                selected_mode = "deep" if (self._is_complex_query(user_query) or avg_quality < 0.28 or coverage < max(2, self.valves.PAGES_TO_SCRAPE // 2)) else "fast"
+            if selected_mode == "deep":
+                selected_mode, deep_synthesis = await self._vane_or_fast(enriched_query, "web", "balanced", emitter)
+
+        avg_quality = sum(item.get("quality_score", 0.0) for item in scraped) / len(scraped) if scraped else 0.0
+        coverage = sum(1 for item in scraped if len(item.get("content", "")) >= self.valves.MIN_CONTENT_CHARS)
+
+        if deep_synthesis is not None:
             deep_fusion = self._fuse_deep_signals(scraped, deep_synthesis)
 
         if include_citations:
