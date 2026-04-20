@@ -2,6 +2,7 @@ services:
   enhanced-websearch:
     # build: .
     image: ghcr.io/binuengoor/enhanced-websearch:latest
+    user: "1000:1000"
     container_name: enhanced-websearch
     env_file:
       - .env
