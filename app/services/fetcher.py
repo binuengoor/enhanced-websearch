@@ -28,8 +28,32 @@ class PageFetcher:
         }
 
     async def fetch(self, url: str) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
-            resp = await client.get(url)
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
+                resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            return {
+                "url": url,
+                "title": url,
+                "content": "",
+                "source": "html",
+                "language": "",
+                "published_at": "",
+                "last_updated": "",
+                "error": f"fetch_failed:{type(exc).__name__}",
+            }
+
+        if resp.status_code >= 400:
+            return {
+                "url": str(resp.url),
+                "title": str(resp.url),
+                "content": "",
+                "source": "html",
+                "language": "",
+                "published_at": "",
+                "last_updated": str(resp.headers.get("last-modified") or "").strip(),
+                "error": f"http_status:{resp.status_code}",
+            }
 
         content_type = (resp.headers.get("content-type") or "").lower()
         if "application/pdf" in content_type or url.lower().endswith(".pdf"):
@@ -70,8 +94,38 @@ class PageFetcher:
         }
 
     async def extract(self, url: str) -> Dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
-            resp = await client.get(url)
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
+                resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            return {
+                "url": url,
+                "title": "",
+                "meta": {},
+                "headings": [],
+                "links": [],
+                "sections": [],
+                "tables": [],
+                "code_blocks": [],
+                "lists": [],
+                "source": "html",
+                "error": f"extract_failed:{type(exc).__name__}",
+            }
+
+        if resp.status_code >= 400:
+            return {
+                "url": str(resp.url),
+                "title": "",
+                "meta": {},
+                "headings": [],
+                "links": [],
+                "sections": [],
+                "tables": [],
+                "code_blocks": [],
+                "lists": [],
+                "source": "html",
+                "error": f"http_status:{resp.status_code}",
+            }
 
         soup = BeautifulSoup(resp.text, "html.parser")
         out = {

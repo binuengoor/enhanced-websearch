@@ -33,8 +33,18 @@ class SearxngProvider(SearchProvider):
         url = f"{self.base_url}/search"
         started = time.perf_counter()
         logger.info("event=provider_http_request request_id=%s provider=%s url=%s query=%r", request_id, self.name, url, query)
-        async with httpx.AsyncClient(timeout=self.timeout_s) as client:
-            resp = await client.get(url, params=params)
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                resp = await client.get(url, params=params)
+        except httpx.HTTPError as exc:
+            logger.warning(
+                "event=provider_http_exception request_id=%s provider=%s error_type=%s error=%r",
+                request_id,
+                self.name,
+                type(exc).__name__,
+                exc,
+            )
+            raise ProviderError(f"{self.name} request failed: {type(exc).__name__}") from exc
 
         if resp.status_code == 429:
             logger.warning("event=provider_http_error request_id=%s provider=%s status=429 query=%r", request_id, self.name, query)
