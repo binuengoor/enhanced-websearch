@@ -25,6 +25,19 @@ def get_router_health(request: Request):
     return request.app.state.provider_router.health_snapshot
 
 
+@router.post("/")
+async def search_root(
+    payload: PerplexitySearchRequest,
+    orch: ResearchOrchestrator = Depends(get_orchestrator),
+):
+    """Root endpoint for Open WebUI Perplexity search integration"""
+    try:
+        response = await orch.execute_perplexity_search(payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return response.model_dump(exclude_none=True)
+
+
 @router.post("/internal/search")
 async def search(payload: SearchRequest, orch: ResearchOrchestrator = Depends(get_orchestrator)):
     response = await orch.execute_search(payload)
