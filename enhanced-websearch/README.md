@@ -1,151 +1,63 @@
-# Enhanced Websearch (Tool-Only)
+# Enhanced Websearch Open WebUI Wrapper
 
-This module now provides a single Open-WebUI surface:
+This directory contains the thin Open WebUI client tool.
 
-- [enhanced_websearch.py](enhanced_websearch.py): single deployable Open-WebUI tool artifact
+- enhanced_websearch.py: single-file wrapper that calls the standalone backend service over HTTP
 
-The previous pipe/function implementation has been removed as part of the tool-first refactor.
+All heavy research behavior moved to the standalone backend at repo root.
 
-## Architecture
+## Wrapper behavior
 
-`enhanced_websearch.py` contains one canonical internal execution path (`_run_research`) and thin public entrypoints:
+The wrapper exposes three Open WebUI entrypoints:
 
-- `elevated_search`: primary structured research tool
-- `fetch_page`: direct fetch helper
-- `extract_page_structure`: structural extraction helper
+- elevated_search
+- fetch_page
+- extract_page_structure
 
-Capabilities:
+Each method proxies to service endpoints:
 
-- SearXNG retrieval
-- Query expansion + Reciprocal Rank Fusion (RRF)
-- Concurrent scraping
-- FlareSolverr fallback for blocked pages
-- Optional Vane deep synthesis with fast fallback behavior
-- Iterative research mode with explicit stop conditions
+- POST /internal/search
+- POST /fetch
+- POST /extract
 
-## Runtime Support Matrix
+The wrapper is intentionally small and uses stdlib HTTP so it remains robust in constrained Open WebUI runtime environments.
 
-Standard Python or server runtimes:
+## Config
 
-- Fully supported path
-- Transport backend: `requests`
-- HTML parser backend: `beautifulsoup4`
-- Scrape execution: threadpool
-- PDF extraction: `pypdf` or `PyPDF2` when available
+Admin valves:
 
-Strict constrained runtimes (Pyodide-style browser constraints):
+- SERVICE_BASE_URL
+- REQUEST_TIMEOUT
 
-- Degraded but supported path
-- Transport fallback: stdlib `urllib`
-- HTML parsing fallback: basic text extraction (no full DOM fidelity)
-- Scrape execution fallback: sequential (no threadpool)
-- PDF extraction may be unavailable
+Minimal wrapper setup (recommended):
 
-Unsupported capability handling:
+- set SERVICE_BASE_URL only
+- keep REQUEST_TIMEOUT default unless your network is slow
+- configure search providers, Vane, routing, cache, and mode budgets at service level (.env + config/config.yaml)
 
-- The tool returns partial results when possible.
-- Runtime limitations are reported in `diagnostics.runtime` and `diagnostics.warnings`.
+User valves:
 
-## Open-WebUI Configurable Parameters
+- mode
+- include_citations
+- show_status_updates
+- max_iterations
 
-### 1) Admin Valves (global defaults)
+Environment defaults:
 
-Configured from Open-WebUI Admin Panel -> Tools -> this tool -> gear icon.
+- EWS_SERVICE_BASE_URL (default: http://enhanced-websearch:8091)
+- EWS_BEARER_TOKEN (optional)
+- EWS_REQUEST_TIMEOUT (default: 25)
 
-- `SEARXNG_BASE_URL`
-- `VANE_URL`
-- `FLARESOLVERR_URL`
-- `SEARCH_RESULTS_PER_QUERY`
-- `PAGES_TO_SCRAPE`
-- `ENABLE_VANE_DEEP`
-- `VANE_CHAT_MODEL_PROVIDER_ID`
-- `VANE_CHAT_MODEL_KEY`
-- `VANE_EMBEDDING_MODEL_PROVIDER_ID`
-- `VANE_EMBEDDING_MODEL_KEY`
-- `STRICT_COMPAT_MODE`
+## Deployment relationship
 
-Environment variable defaults:
+1. Deploy the backend service from repo root.
+2. Verify backend health at GET /health.
+3. Import enhanced_websearch.py into Open WebUI workspace tools.
+4. Set SERVICE_BASE_URL to the backend URL.
+5. Optionally tune per-user valves (mode, citations, status updates, max_iterations).
 
-- `SEARXNG_URL` or `SEARXNG_BASE_URL`
-- `VANE_URL`
-- `FLARESOLVERR_URL`
-- `SEARCH_RESULTS_PER_QUERY`
-- `PAGES_TO_SCRAPE`
-- `ENABLE_VANE_DEEP`
-- `VANE_CHAT_MODEL_PROVIDER_ID`
-- `VANE_CHAT_MODEL_KEY`
-- `VANE_EMBEDDING_MODEL_PROVIDER_ID`
-- `VANE_EMBEDDING_MODEL_KEY`
-- `STRICT_COMPAT_MODE`
+The wrapper returns backend JSON output directly, so the backend response contract is the canonical contract.
 
-Advanced env overrides (internal defaults):
+The public POST /search endpoint is now reserved for Perplexity-compatible callers; the wrapper uses POST /internal/search.
 
-- `REQUEST_TIMEOUT`, `FLARESOLVERR_TIMEOUT`, `VANE_TIMEOUT`
-- `CONCURRENT_SCRAPE_WORKERS`, `QUERY_VARIANTS_LIMIT`, `RRF_K`
-- `SEARCH_CATEGORIES`, `SEARCH_ENGINES`, `SEARCH_LANGUAGE`, `SEARCH_TIME_RANGE`
-- `MAX_PAGE_CONTENT_CHARS`, `MIN_CONTENT_CHARS`
-- `INJECT_DATETIME`, `DATETIME_FORMAT`, `TIMEZONE`
-- `RESEARCH_MIN_ITERATIONS`, `RESEARCH_MAX_CONTEXT_SOURCES`
-
-### 2) User Valves (per-user behavior)
-
-- `mode`
-- `show_status_updates`
-- `include_citations`
-- `show_reasoning`
-- `max_iterations`
-
-### 3) Runtime Arguments (tool call)
-
-For `elevated_search`:
-
-- `query` (required)
-- `mode` (default: `auto`) values: `auto`, `fast`, `deep`, `research`
-- `source_mode` (default: `web`) values: `web`, `academia`, `social`, `all`
-- `depth` (default: `balanced`) values: `quick`, `speed`, `balanced`, `quality`
-
-Optional mode prefixes in query:
-
-- `fast: ...`
-- `deep: ...`
-
-For `fetch_page`:
-
-- `url` (required)
-
-For `extract_page_structure`:
-
-- `url` (required)
-- `components` (default: `all`)
-
-## Response Contract
-
-`elevated_search` now returns a structured JSON object with stable top-level fields:
-
-- `query`
-- `mode`
-- `direct_answer`
-- `summary`
-- `findings`
-- `citations`
-- `sources`
-- `follow_up_queries`
-- `diagnostics`
-- `timings`
-- `confidence`
-
-Transition compatibility:
-
-- Legacy payload fields are still available under `legacy` for migration.
-- New integrations should read top-level structured fields first.
-
-Runtime diagnostics:
-
-- `diagnostics.runtime` reports active runtime backends and degraded reasons.
-- `diagnostics.warnings` includes runtime degradation warnings when applicable.
-
-## Notes
-
-- This script does not write to the Open-WebUI database.
-- Deep mode requires Vane provider IDs to be configured.
-- If deep synthesis fails or is low confidence, the tool falls back to fast evidence.
+If `EWS_BEARER_TOKEN` is set, the wrapper forwards `Authorization: Bearer <token>` to the backend.

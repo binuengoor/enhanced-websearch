@@ -1,0 +1,107 @@
+service:
+  host: 0.0.0.0
+  port: 8091
+  request_timeout_s: 25
+
+routing:
+  policy: rotating_weighted
+  cooldown_seconds: 90
+  failure_threshold: 2
+
+modes:
+  fast:
+    max_provider_attempts: 2
+    max_queries: 1
+    max_pages_to_fetch: 5
+  deep:
+    max_provider_attempts: 3
+    max_queries: 2
+    max_pages_to_fetch: 8
+  research:
+    max_provider_attempts: 3
+    max_queries: 4
+    max_pages_to_fetch: 10
+
+providers:
+  - name: searxng
+    kind: searxng
+    enabled: true
+    weight: 3
+    timeout_s: 12
+    base_url: ${SEARXNG_BASE_URL}
+  - name: brave-search
+    kind: litellm-search
+    enabled: true
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/brave-search
+    api_key_env: LITELLM_API_KEY
+  - name: serper
+    kind: litellm-search
+    enabled: true
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/serper
+    api_key_env: LITELLM_API_KEY
+  - name: exa
+    kind: litellm-search
+    enabled: true
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/exa
+    api_key_env: LITELLM_API_KEY
+  - name: tavily
+    kind: litellm-search
+    enabled: true
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/tavily
+    api_key_env: LITELLM_API_KEY
+  - name: firecrawl
+    kind: litellm-search
+    enabled: false
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/firecrawl
+    api_key_env: LITELLM_API_KEY
+  - name: linkup
+    kind: litellm-search
+    enabled: false
+    weight: 1
+    timeout_s: 12
+    base_url: ${LITELLM_SEARCH_BASE_URL}
+    path: /search/linkup
+    api_key_env: LITELLM_API_KEY
+
+cache:
+  enabled: true
+  max_entries: 1000
+  ttl_general_s: 300
+  ttl_recency_s: 45
+  page_cache_ttl_s: 120
+
+scraping:
+  user_agent: EnhancedWebsearchService/1.0
+  request_timeout_s: 18
+  max_content_chars: 30000
+  min_content_chars: 80
+  flaresolverr_url: ${FLARESOLVERR_URL}
+
+vane:
+  enabled: ${VANE_ENABLED}
+  url: ${VANE_URL}
+  timeout_s: 25
+  default_optimization_mode: balanced
+  chat_provider_id_env: VANE_CHAT_PROVIDER_ID
+  chat_model_key: auto-main
+  embedding_provider_id_env: VANE_EMBED_PROVIDER_ID
+  embedding_model_key: Xenova/nomic-embed-text-v1
+
+logging:
+  level: INFO
+  json: false
