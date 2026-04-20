@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from typing import Any, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal, Optional
 
 import httpx
 try:
@@ -21,6 +23,46 @@ def _csv_env(name: str) -> list[str]:
     if not raw:
         return []
     return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _normalize_allowed_host(value: str) -> list[str]:
+    token = value.strip()
+    if not token:
+        return []
+    if token == "*":
+        return [token]
+
+    # Accept URL-like values in env and extract hostname.
+    token = re.sub(r"^https?://", "", token, flags=re.IGNORECASE)
+    token = token.split("/", 1)[0]
+
+    # Keep host:* entries as-is, but also allow the bare host because some
+    # clients send Host without a port while others include host:port.
+    if token.endswith(":*"):
+        bare_host = token[:-2]
+        if bare_host:
+            return [bare_host, token]
+        return [token]
+
+    # Preserve explicit host:port entries and IPv6 bracket forms as-is.
+    if token.startswith("[") or token.count(":") >= 1:
+        return [token]
+
+    # Convert bare hosts to both the bare host and a wildcard-port entry so
+    # common MCP clients that send host or host:port headers will still match.
+    return [token, f"{token}:*"]
+
+
+def _normalized_allowed_hosts(values: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        for norm in _normalize_allowed_host(raw):
+            if not norm or norm in seen:
+                continue
+            seen.add(norm)
+            out.append(norm)
+    return out
 
 
 @dataclass
@@ -66,8 +108,8 @@ mcp = FastMCP(
     stateless_http=True,
     instructions=(
         "Use this server for search, page fetches, structured extraction, and provider health. "
-        "The search tool returns the rich research payload from the backend; the perplexity_search "
-        "tool returns Perplexity-style results for drop-in compatibility."
+        "The research tool returns rich long-form research payloads; "
+        "the search tool returns concise results."
     ),
     lifespan=lifespan,
 )
@@ -80,8 +122,27 @@ _allowed_origins = _csv_env("EWS_MCP_ALLOWED_ORIGINS")
 _dns_rebinding = os.getenv("EWS_MCP_DNS_REBINDING_PROTECTION")
 
 if mcp.settings.transport_security is not None:
-    if _allowed_hosts:
-        mcp.settings.transport_security.allowed_hosts = _allowed_hosts
+    normalized_hosts = _normalized_allowed_hosts(_allowed_hosts)
+    if normalized_hosts:
+        mcp.settings.transport_security.allowed_hosts = normalized_hosts
+    else:
+        # FastMCP compares against Host headers, so allow both bare and
+        # wildcard-port forms for common local/LAN deployments when an explicit
+        # allowlist is not set.
+        mcp.settings.transport_security.allowed_hosts = [
+            "localhost",
+            "localhost:*",
+            "127.0.0.1",
+            "127.0.0.1:*",
+            "[::1]",
+            "[::1]:*",
+            "enhanced-websearch",
+            "enhanced-websearch:*",
+            "10.1.1.150",
+            "10.1.1.150:*",
+            "192.168.16.1",
+            "192.168.16.1:*",
+        ]
     if _allowed_origins:
         mcp.settings.transport_security.allowed_origins = _allowed_origins
     if _dns_rebinding is not None:
@@ -105,110 +166,103 @@ async def _backend_get(ctx: Context, path: str) -> dict[str, Any]:
     return response.json()
 
 
-def _require_ctx(ctx: Context | None) -> Context:
-    if ctx is None:
-        raise ValueError("MCP request context is not available")
-    return ctx
+@mcp.tool()
+async def research(
+    query: str,
+    source_mode: Literal["web", "academia", "social", "all"] = "web",
+    depth: Literal["quick", "balanced", "quality"] = "quality",
+    max_iterations: int = 4,
+    include_legacy: bool = False,
+    strict_runtime: bool = False,
+    include_debug: bool = False,
+    ctx: Context = None,
+) -> dict[str, Any]:
+    """Run long-form research via /research and return the rich result payload."""
+    payload = {
+        "query": query,
+        "source_mode": source_mode,
+        "depth": depth,
+        "max_iterations": max_iterations,
+        "include_legacy": include_legacy,
+        "strict_runtime": strict_runtime,
+        "include_debug": include_debug,
+        "user_context": {"client": "mcp", "tool": "research"},
+    }
+    return await _backend_post(ctx, "/research", payload)
 
 
 @mcp.tool()
 async def search(
-    query: str,
-    mode: str = "auto",
-    source_mode: str = "web",
-    depth: str = "balanced",
-    max_iterations: int = 4,
-    include_citations: bool = True,
-    include_legacy: bool = False,
-    strict_runtime: bool = False,
-    ctx: Context | None = None,
-) -> dict[str, Any]:
-    """Run the full research backend and return the rich result payload."""
-    ctx = _require_ctx(ctx)
-    effective_mode = mode if mode != "auto" else ctx.request_context.lifespan_context.config.default_mode
-    payload = {
-        "query": query,
-        "mode": effective_mode,
-        "source_mode": source_mode,
-        "depth": depth,
-        "max_iterations": max_iterations,
-        "include_citations": include_citations,
-        "include_debug": False,
-        "include_legacy": include_legacy,
-        "strict_runtime": strict_runtime,
-        "user_context": {"client": "mcp", "tool": "search"},
-    }
-    return await _backend_post(ctx, "/internal/search", payload)
-
-
-@mcp.tool()
-async def perplexity_search(
     query: str | list[str],
     max_results: int = 10,
     display_server_time: bool = False,
+    search_recency_filter: Literal["none", "hour", "day", "week", "month", "year"] = "none",
+    search_recency_amount: int = 1,
+    search_mode: Literal["auto", "web", "academic", "sec"] = "auto",
     country: Optional[str] = None,
-    max_tokens: Optional[int] = None,
-    max_tokens_per_page: Optional[int] = None,
-    search_language_filter: Optional[list[str]] = None,
-    search_domain_filter: Optional[list[str]] = None,
-    search_recency_filter: Optional[str] = None,
-    search_after_date_filter: Optional[str] = None,
-    search_before_date_filter: Optional[str] = None,
-    last_updated_after_filter: Optional[str] = None,
-    last_updated_before_filter: Optional[str] = None,
-    search_mode: Optional[str] = None,
-    mode: Optional[str] = None,
-    ctx: Context | None = None,
+    ctx: Context = None,
 ) -> dict[str, Any]:
     """Return Perplexity-style search results."""
-    ctx = _require_ctx(ctx)
-    effective_mode = mode or ctx.request_context.lifespan_context.config.default_mode
+    if search_recency_amount < 1:
+        raise ValueError("search_recency_amount must be >= 1")
+
+    normalized_recency_filter = None if search_recency_filter == "none" else search_recency_filter
+    normalized_search_mode = None if search_mode == "auto" else search_mode
+
+    effective_recency_filter = normalized_recency_filter
+    search_after_date_filter = None
+    if normalized_recency_filter and search_recency_amount > 1:
+        now = datetime.now(timezone.utc)
+        if normalized_recency_filter == "hour":
+            cutoff = now - timedelta(hours=search_recency_amount)
+        elif normalized_recency_filter == "day":
+            cutoff = now - timedelta(days=search_recency_amount)
+        elif normalized_recency_filter == "week":
+            cutoff = now - timedelta(days=7 * search_recency_amount)
+        elif normalized_recency_filter == "month":
+            cutoff = now - timedelta(days=31 * search_recency_amount)
+        else:  # year
+            cutoff = now - timedelta(days=366 * search_recency_amount)
+
+        # Use explicit after-date for multi-unit windows (e.g., 3 months).
+        # Disable fixed recency buckets to avoid unintentionally narrowing to 1 unit.
+        search_after_date_filter = cutoff.isoformat()
+        effective_recency_filter = None
+
     payload = {
         "query": query,
         "max_results": max_results,
         "display_server_time": display_server_time,
         "country": country,
-        "max_tokens": max_tokens,
-        "max_tokens_per_page": max_tokens_per_page,
-        "search_language_filter": search_language_filter,
-        "search_domain_filter": search_domain_filter,
-        "search_recency_filter": search_recency_filter,
+        "search_recency_filter": effective_recency_filter,
         "search_after_date_filter": search_after_date_filter,
-        "search_before_date_filter": search_before_date_filter,
-        "last_updated_after_filter": last_updated_after_filter,
-        "last_updated_before_filter": last_updated_before_filter,
-        "search_mode": search_mode,
-        "mode": effective_mode,
+        "search_mode": normalized_search_mode,
         "client": "mcp",
     }
     return await _backend_post(ctx, "/search", payload)
 
 
 @mcp.tool()
-async def fetch_page(url: str, ctx: Context | None = None) -> dict[str, Any]:
+async def fetch_page(url: str, ctx: Context = None) -> dict[str, Any]:
     """Fetch and extract a single page."""
-    ctx = _require_ctx(ctx)
     return await _backend_post(ctx, "/fetch", {"url": url})
 
 
 @mcp.tool()
-async def extract_page_structure(url: str, components: str = "all", ctx: Context | None = None) -> dict[str, Any]:
+async def extract_page_structure(url: str, components: str = "all", ctx: Context = None) -> dict[str, Any]:
     """Extract page structure and metadata."""
-    ctx = _require_ctx(ctx)
     return await _backend_post(ctx, "/extract", {"url": url, "components": components})
 
 
 @mcp.tool()
-async def health_check(ctx: Context | None = None) -> dict[str, Any]:
+async def health_check(ctx: Context = None) -> dict[str, Any]:
     """Check service health."""
-    ctx = _require_ctx(ctx)
     return await _backend_get(ctx, "/health")
 
 
 @mcp.tool()
-async def providers_health(ctx: Context | None = None) -> dict[str, Any]:
+async def providers_health(ctx: Context = None) -> dict[str, Any]:
     """Inspect provider health and cooldown state."""
-    ctx = _require_ctx(ctx)
     return await _backend_get(ctx, "/providers/health")
 
 

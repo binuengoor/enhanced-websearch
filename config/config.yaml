@@ -113,6 +113,9 @@ compiler:
   timeout_s: 20
   model_id: ""
 
+planner:
+  llm_fallback_enabled: false
+
 logging:
   level: INFO
   json: false

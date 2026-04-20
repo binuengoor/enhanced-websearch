@@ -60,3 +60,35 @@ class QueryPlanner:
         if missing:
             return f"{query} {' '.join(missing[:3])}"
         return f"{query} limitations tradeoffs"
+
+    def quick_profile(
+        self,
+        query: str,
+        max_results: int,
+        has_filters: bool,
+        recency: bool,
+        search_mode: str | None,
+    ) -> Dict[str, str | int]:
+        profile = self.classify_complexity(query)
+
+        depth = "quick"
+        max_iterations = 1
+
+        if has_filters or profile["is_comparison"] or profile["is_recommendation"]:
+            depth = "balanced"
+            max_iterations = 2
+        elif profile["is_long"] or max_results > 8:
+            depth = "balanced"
+
+        if recency:
+            depth = "quick"
+
+        if search_mode == "academic":
+            depth = "quality"
+            max_iterations = 2
+
+        return {
+            "mode": "fast",
+            "depth": depth,
+            "max_iterations": max_iterations,
+        }

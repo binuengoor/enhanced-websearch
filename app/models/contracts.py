@@ -23,6 +23,17 @@ class SearchRequest(BaseModel):
     user_context: Dict[str, Any] = Field(default_factory=dict)
 
 
+class ResearchRequest(BaseModel):
+    query: str = Field(min_length=1)
+    source_mode: SourceMode = "web"
+    depth: DepthMode = "quality"
+    max_iterations: int = Field(default=4, ge=1, le=8)
+    include_debug: bool = False
+    include_legacy: bool = False
+    strict_runtime: bool = False
+    user_context: Dict[str, Any] = Field(default_factory=dict)
+
+
 class PerplexitySearchRequest(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -40,7 +51,10 @@ class PerplexitySearchRequest(BaseModel):
     last_updated_after_filter: Optional[str] = None
     last_updated_before_filter: Optional[str] = None
     search_mode: Optional[Literal["web", "academic", "sec"]] = None
-    mode: Optional[Mode] = None
+    mode: Optional[Mode] = Field(
+        default=None,
+        description="Deprecated. Endpoint selection should determine behavior: /search for concise results, /research for long-form output.",
+    )
     client: Optional[str] = None
     trace_id: Optional[str] = None
 

@@ -1,10 +1,11 @@
 """
 title: Enhanced Websearch Tool (Thin Client)
 author: GitHub Copilot
-version: 2.0.0
+version: 2.1.0
 license: MIT
 description: >
     Thin Open WebUI wrapper for the standalone Enhanced Websearch Service.
+    Use concise_search for /search and research_search for /research.
     All heavy research logic runs in the backend service.
 requirements: pydantic
 """
@@ -13,7 +14,7 @@ import json
 import os
 import urllib.error
 import urllib.request
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field
 
@@ -36,10 +37,9 @@ class Valves(BaseModel):
 
 
 class UserValves(BaseModel):
-    mode: str = Field(default="auto", description="auto, fast, deep, research")
-    include_citations: bool = Field(default=True)
     show_status_updates: bool = Field(default=True)
     max_iterations: int = Field(default=4, ge=1, le=8)
+    search_max_results: int = Field(default=10, ge=1, le=20)
 
 
 class Tools:
@@ -108,42 +108,82 @@ class Tools:
                 "service_url": url,
             }
 
-    async def elevated_search(
+    async def concise_search(
         self,
         query: str,
-        mode: str = "auto",
-        source_mode: str = "web",
-        depth: str = "balanced",
+        max_results: Optional[int] = None,
+        display_server_time: bool = False,
+        search_mode: Literal["auto", "web", "academic", "sec"] = "auto",
+        search_recency_filter: Literal["none", "hour", "day", "week", "month", "year"] = "none",
+        search_recency_amount: int = 1,
+        country: Optional[str] = None,
         __event_emitter__: Optional[Any] = None,
         __user__: Optional[dict] = None,
     ) -> str:
+        """Perplexity-compatible concise search via /search."""
         user_valves = self._resolve_user_valves(__user__)
-        selected_mode = mode or self._get_user_valve(user_valves, "mode", "auto")
-        include_citations = self._get_user_valve(user_valves, "include_citations", True)
-        max_iterations = self._get_user_valve(user_valves, "max_iterations", 4)
+        effective_max_results = max_results or self._get_user_valve(user_valves, "search_max_results", 10)
         show_status = self._get_user_valve(user_valves, "show_status_updates", True)
 
+        if search_recency_amount < 1:
+            search_recency_amount = 1
+
         if show_status:
-            await self._emit_status(__event_emitter__, f"Calling research backend: mode={selected_mode}")
+            await self._emit_status(
+                __event_emitter__,
+                (
+                    "Calling concise search backend: "
+                    f"max_results={effective_max_results}, mode={search_mode}, "
+                    f"recency={search_recency_filter}, amount={search_recency_amount}"
+                ),
+            )
 
         payload = {
             "query": query,
-            "mode": selected_mode,
+            "max_results": effective_max_results,
+            "display_server_time": display_server_time,
+            "search_mode": None if search_mode == "auto" else search_mode,
+            "search_recency_filter": None if search_recency_filter == "none" else search_recency_filter,
+            "search_recency_amount": search_recency_amount,
+            "country": country,
+        }
+        response = self._post_json("/search", payload)
+
+        if show_status:
+            await self._emit_status(__event_emitter__, "Concise search complete", done=True)
+        return json.dumps(response, ensure_ascii=False)
+
+    async def research_search(
+        self,
+        query: str,
+        source_mode: str = "web",
+        depth: str = "quality",
+        max_iterations: Optional[int] = None,
+        __event_emitter__: Optional[Any] = None,
+        __user__: Optional[dict] = None,
+    ) -> str:
+        """Long-form structured research via /research."""
+        user_valves = self._resolve_user_valves(__user__)
+        effective_iterations = max_iterations or self._get_user_valve(user_valves, "max_iterations", 4)
+        show_status = self._get_user_valve(user_valves, "show_status_updates", True)
+
+        if show_status:
+            await self._emit_status(__event_emitter__, f"Calling long-form research backend: depth={depth}")
+
+        payload = {
+            "query": query,
             "source_mode": source_mode,
             "depth": depth,
-            "max_iterations": max_iterations,
-            "include_citations": include_citations,
+            "max_iterations": effective_iterations,
             "include_debug": False,
             "include_legacy": False,
             "strict_runtime": False,
             "user_context": {},
         }
-
-        response = self._post_json("/internal/search", payload)
+        response = self._post_json("/research", payload)
 
         if show_status:
-            await self._emit_status(__event_emitter__, "Research backend request complete", done=True)
-
+            await self._emit_status(__event_emitter__, "Long-form research complete", done=True)
         return json.dumps(response, ensure_ascii=False)
 
     async def fetch_page(

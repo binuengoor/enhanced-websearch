@@ -35,7 +35,7 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 
 ### POST /search
 
-Perplexity Search API-compatible endpoint for Open WebUI and other clients.
+Perplexity Search API-compatible endpoint for concise, low-latency results.
 
 Request body supports at minimum:
 
@@ -61,7 +61,12 @@ Optional Perplexity-style extensions are also accepted, including:
 - last_updated_after_filter
 - last_updated_before_filter
 - search_mode
-- mode
+- mode (deprecated; ignored for behavior selection)
+
+Behavior notes:
+
+- `/search` always executes in a fast profile with lightweight heuristic planning.
+- Use `/research` for long-form output.
 
 The endpoint also enforces:
 
@@ -71,6 +76,30 @@ The endpoint also enforces:
 - per-page and total token limits for snippets
 
 Unknown fields are ignored.
+
+### POST /research
+
+Long-form research endpoint for multi-step synthesis with citations and diagnostics.
+
+Request body:
+
+{
+  "query": "string",
+  "source_mode": "web|academia|social|all",
+  "depth": "quick|balanced|quality",
+  "max_iterations": 4,
+  "include_debug": false,
+  "include_legacy": false,
+  "strict_runtime": false,
+  "user_context": {}
+}
+
+Response returns the full structured research object (`SearchResponse`):
+
+- direct_answer, summary, findings
+- citations, sources
+- diagnostics (query plan, provider trace, cache)
+- timings and confidence
 
 ### POST /internal/search
 
@@ -137,16 +166,29 @@ The same FastAPI app also mounts a FastMCP server at `/mcp`.
 Available tools:
 
 - search
-- perplexity_search
+- research
 - fetch_page
 - extract_page_structure
 - health_check
 - providers_health
 
+Tool guidance:
+
+- `search` is the concise search path with only the few useful knobs kept (`max_results`, `display_server_time`, `search_mode`, `search_recency_filter`, `search_recency_amount`, `country`). `search_mode` accepts `auto`, `web`, `academic`, or `sec`; `search_recency_filter` accepts `none`, `hour`, `day`, `week`, `month`, or `year`; `search_recency_amount` (default `1`) lets you request multi-unit windows such as `3` + `month`.
+- `research` is the explicit long-form research path with only the needed research knobs (`source_mode`, `depth`, `max_iterations`, `include_legacy`, `strict_runtime`, `include_debug`). `source_mode` accepts `web`, `academia`, `social`, or `all`; `depth` accepts `quick`, `balanced`, or `quality`.
+- `fetch_page` and `extract_page_structure` are for page-level inspection and debugging.
+- `health_check` and `providers_health` are for operational checks.
+
 Optional bearer token:
 
 - set `EWS_BEARER_TOKEN` to require `Authorization: Bearer <token>` on the HTTP surfaces, including `/mcp`
 - leave it blank for local/trusted setups
+
+MCP host-header behavior:
+
+- FastMCP matches the full `Host` header, and the service now allows both bare hosts and wildcard-port entries.
+- To allow local/LAN MCP clients, set `EWS_MCP_ALLOWED_HOSTS` with either bare hosts or wildcard-port entries (for example `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `10.1.1.150`, `10.1.1.150:*`).
+- Plain host values are normalized to both bare and wildcard-port form by the service.
 
 ## Provider routing behavior
 
@@ -194,6 +236,13 @@ Optional LLM result compiler (Perplexity `/search` response refinement):
 - set `EWS_COMPILER_BASE_URL` to your LiteLLM base (`.../v1` recommended)
 - set `EWS_COMPILER_API_KEY` for a compiler-specific auth key
 - if `EWS_COMPILER_API_KEY` is unset, compiler falls back to `LITELLM_API_KEY`
+- the same compiler is also used as a final research quality gate; if a long-form `research` response looks thin or generic, the service can fall back to a quick grounded search path before returning
+
+Optional LLM planner fallback (`/search` profile selection):
+
+- set `EWS_PLANNER_LLM_FALLBACK_ENABLED=true` to allow LLM-assisted selection of `depth` and `max_iterations`
+- default is disabled and remains heuristic-only
+- if LLM planner selection fails for any reason, `/search` automatically falls back to the heuristic profile
 
 When compiler output is accepted, each result may also include optional grounding metadata:
 
@@ -224,6 +273,7 @@ YAML sections:
 - cache
 - scraping
 - vane
+- planner
 - logging
 
 ## Run
@@ -248,6 +298,25 @@ Use a single-file Open WebUI tool that:
 - optionally proxies /fetch and /extract
 
 Keep wrapper logic minimal and stateless.
+
+## Integration Migration Notes
+
+Use this mapping after the `/search` + `/research` split:
+
+- Perplexity-compatible clients: call `POST /search`.
+- Long-form structured research clients: call `POST /research`.
+- Advanced internal callers that need explicit mode control (`auto|fast|deep|research`): use `POST /internal/search`.
+
+MCP guidance:
+
+- `perplexity_search` should target `POST /search` and only send deprecated `mode` when explicitly requested.
+- `research_search` should target `POST /research` for explicit long-form behavior.
+- `search` can remain as a back-compat alias for rich payload paths.
+
+OpenWebUI thin-client guidance:
+
+- Add explicit methods for concise `POST /search` and long-form `POST /research`.
+- Keep any existing rich/internal method as back-compat where needed.
 
 ## Optional bearer token
 

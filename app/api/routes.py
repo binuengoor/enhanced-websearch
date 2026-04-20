@@ -7,6 +7,7 @@ from app.models.contracts import (
     ExtractRequest,
     FetchRequest,
     PerplexitySearchRequest,
+    ResearchRequest,
     SearchRequest,
 )
 from app.services.orchestrator import ResearchOrchestrator
@@ -54,6 +55,28 @@ async def perplexity_search(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return response.model_dump(exclude_none=True)
+
+
+@router.post("/research")
+async def research_search(
+    payload: ResearchRequest,
+    orch: ResearchOrchestrator = Depends(get_orchestrator),
+):
+    response = await orch.execute_search(
+        SearchRequest(
+            query=payload.query,
+            mode="research",
+            source_mode=payload.source_mode,
+            depth=payload.depth,
+            max_iterations=payload.max_iterations,
+            include_citations=True,
+            include_debug=payload.include_debug,
+            include_legacy=payload.include_legacy,
+            strict_runtime=payload.strict_runtime,
+            user_context=payload.user_context,
+        )
+    )
+    return response.model_dump()
 
 
 @router.post("/fetch")

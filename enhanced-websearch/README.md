@@ -8,17 +8,26 @@ All heavy research behavior moved to the standalone backend at repo root.
 
 ## Wrapper behavior
 
-The wrapper exposes three Open WebUI entrypoints:
+The wrapper exposes these Open WebUI entrypoints:
 
-- elevated_search
+- concise_search
+- research_search
 - fetch_page
 - extract_page_structure
 
-Each method proxies to service endpoints:
+Methods proxy to service endpoints:
 
-- POST /internal/search
-- POST /fetch
-- POST /extract
+- POST /search (concise_search)
+- POST /research (research_search)
+- POST /fetch (fetch_page)
+- POST /extract (extract_page_structure)
+
+`concise_search` supports the same practical search knobs used in MCP:
+
+- search_mode: auto, web, academic, sec
+- search_recency_filter: none, hour, day, week, month, year
+- search_recency_amount: integer amount for multi-unit windows (for example, 3 + month)
+- country: optional country hint
 
 The wrapper is intentionally small and uses stdlib HTTP so it remains robust in constrained Open WebUI runtime environments.
 
@@ -37,8 +46,6 @@ Minimal wrapper setup (recommended):
 
 User valves:
 
-- mode
-- include_citations
 - show_status_updates
 - max_iterations
 
@@ -54,10 +61,10 @@ Environment defaults:
 2. Verify backend health at GET /health.
 3. Import enhanced_websearch.py into Open WebUI workspace tools.
 4. Set SERVICE_BASE_URL to the backend URL.
-5. Optionally tune per-user valves (mode, citations, status updates, max_iterations).
+5. Optionally tune per-user valves (status updates, max_iterations).
 
 The wrapper returns backend JSON output directly, so the backend response contract is the canonical contract.
 
-The public POST /search endpoint is now reserved for Perplexity-compatible callers; the wrapper uses POST /internal/search.
+The public POST /search endpoint is Perplexity-compatible and is used by `concise_search`.
 
 If `EWS_BEARER_TOKEN` is set, the wrapper forwards `Authorization: Bearer <token>` to the backend.

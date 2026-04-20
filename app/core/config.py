@@ -72,6 +72,10 @@ class CompilerConfig(BaseModel):
     model_id: str = ""
 
 
+class PlannerConfig(BaseModel):
+    llm_fallback_enabled: bool = False
+
+
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     json: bool = False
@@ -86,6 +90,7 @@ class AppConfig(BaseModel):
     scraping: ScrapingConfig = Field(default_factory=ScrapingConfig)
     vane: VaneConfig = Field(default_factory=VaneConfig)
     compiler: CompilerConfig = Field(default_factory=CompilerConfig)
+    planner: PlannerConfig = Field(default_factory=PlannerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
@@ -162,6 +167,12 @@ def _apply_env_overrides(payload: dict) -> dict:
         "EWS_COMPILER_MODEL_ID",
         payload["compiler"].get("model_id", ""),
     )
+
+    payload.setdefault("planner", {})
+    payload["planner"]["llm_fallback_enabled"] = _env(
+        "EWS_PLANNER_LLM_FALLBACK_ENABLED",
+        str(payload["planner"].get("llm_fallback_enabled", False)),
+    ).lower() in {"1", "true", "yes", "on"}
 
     shared_litellm_key_env = "LITELLM_API_KEY"
     allowed_litellm = _csv_set(_env("LITELLM_ENABLED_PROVIDERS", ""))

@@ -48,7 +48,19 @@ class ProviderRouter:
                 return []
             pivot = self._cursor % len(weighted)
             self._cursor += 1
-            return weighted[pivot:] + weighted[:pivot]
+            rotated = weighted[pivot:] + weighted[:pivot]
+
+            # Keep weighted preference but avoid trying the same provider
+            # multiple times in a single routed_search call.
+            unique_order: List[ProviderSlot] = []
+            seen: set[str] = set()
+            for slot in rotated:
+                name = slot.provider.name
+                if name in seen:
+                    continue
+                seen.add(name)
+                unique_order.append(slot)
+            return unique_order
 
     def _mark_success(self, name: str) -> None:
         rec = self._health[name]

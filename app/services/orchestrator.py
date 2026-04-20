@@ -182,6 +182,18 @@ class ResearchOrchestrator:
             "confidence": confidence,
         }
 
+        if selected_mode in {"deep", "research"}:
+            vetted_payload = await self._maybe_vet_and_fallback_research(
+                req=req,
+                payload=payload,
+                request_id=request_id,
+                started=started,
+                selected_mode=selected_mode,
+                mode_budget=mode_budget,
+            )
+            if vetted_payload is not None:
+                payload = vetted_payload
+
         if req.include_legacy:
             payload["legacy"] = {
                 "results_ranked": fused,
@@ -211,27 +223,73 @@ class ResearchOrchestrator:
         if not queries:
             raise ValueError("query is required")
 
-        mode = req.mode or self._infer_compat_mode(req)
         source_mode = self._map_search_mode(req.search_mode)
         results: List[PerplexitySearchResult] = []
         seen_urls: set[str] = set()
+
+        if req.mode:
+            logger.info(
+                "event=deprecated_mode_ignored request_id=%s provided_mode=%s endpoint=/search",
+                request_id,
+                req.mode,
+            )
 
         logger.info(
             "event=perplexity_search_start request_id=%s query_count=%s max_results=%s mode=%s search_mode=%s",
             request_id,
             len(queries),
             req.max_results,
-            mode,
+            "fast",
             req.search_mode or "none",
         )
 
         for query in queries:
+            quick = self.planner.quick_profile(
+                query=query,
+                max_results=req.max_results,
+                has_filters=bool(req.search_domain_filter or req.search_language_filter or req.country),
+                recency=bool(req.search_recency_filter),
+                search_mode=req.search_mode,
+            )
+
+            if self.config.planner.llm_fallback_enabled:
+                llm_quick = await self.compiler.choose_search_profile(
+                    query=query,
+                    max_results=req.max_results,
+                    has_filters=bool(req.search_domain_filter or req.search_language_filter or req.country),
+                    recency=bool(req.search_recency_filter),
+                    search_mode=req.search_mode,
+                    heuristic=quick,
+                )
+                if llm_quick:
+                    quick = llm_quick
+                    logger.info(
+                        "event=search_profile_selected request_id=%s source=llm depth=%s max_iterations=%s",
+                        request_id,
+                        quick.get("depth"),
+                        quick.get("max_iterations"),
+                    )
+                else:
+                    logger.info(
+                        "event=search_profile_selected request_id=%s source=heuristic_fallback depth=%s max_iterations=%s",
+                        request_id,
+                        quick.get("depth"),
+                        quick.get("max_iterations"),
+                    )
+            else:
+                logger.info(
+                    "event=search_profile_selected request_id=%s source=heuristic depth=%s max_iterations=%s",
+                    request_id,
+                    quick.get("depth"),
+                    quick.get("max_iterations"),
+                )
+
             internal = SearchRequest(
                 query=query,
-                mode=mode,
+                mode="fast",
                 source_mode=source_mode,
-                depth=self._select_depth(req),
-                max_iterations=self._select_iterations(req),
+                depth=str(quick["depth"]),
+                max_iterations=int(quick["max_iterations"]),
                 include_citations=True,
                 include_debug=False,
                 include_legacy=False,
@@ -371,6 +429,169 @@ class ResearchOrchestrator:
             pages.append(page)
         pages.sort(key=lambda x: x.get("quality_score", 0.0), reverse=True)
         return pages
+
+    async def _maybe_vet_and_fallback_research(
+        self,
+        req: SearchRequest,
+        payload: Dict[str, Any],
+        request_id: str,
+        started: float,
+        selected_mode: str,
+        mode_budget: Any,
+    ) -> Dict[str, Any] | None:
+        if not self._looks_useful(payload):
+            payload = await self._run_research_vet(req, payload, request_id)
+
+        if self._looks_useful(payload):
+            return None
+
+        fallback_query = self._suggest_fallback_query(req.query, payload)
+        logger.info(
+            "event=research_fallback_triggered request_id=%s mode=%s query=%r fallback_query=%r",
+            request_id,
+            selected_mode,
+            req.query,
+            fallback_query,
+        )
+
+        fallback_request = PerplexitySearchRequest(
+            query=fallback_query or req.query,
+            max_results=max(5, min(10, mode_budget.max_pages_to_fetch)),
+            display_server_time=False,
+            country=None,
+            max_tokens=None,
+            max_tokens_per_page=None,
+            search_language_filter=None,
+            search_domain_filter=None,
+            search_recency_filter=None,
+            search_after_date_filter=None,
+            search_before_date_filter=None,
+            last_updated_after_filter=None,
+            last_updated_before_filter=None,
+            search_mode=None,
+            client="mcp" if payload.get("diagnostics", {}).get("runtime", {}).get("strict_runtime") else "backend-fallback",
+            trace_id=request_id,
+        )
+        fallback_response = await self.execute_perplexity_search(fallback_request)
+        fallback_payload = self._research_payload_from_perplexity(req, payload, fallback_response, request_id, started, fallback_query)
+        return fallback_payload
+
+    async def _run_research_vet(self, req: SearchRequest, payload: Dict[str, Any], request_id: str) -> Dict[str, Any]:
+        vet = await self.compiler.vet_research_response(
+            query=req.query,
+            response=payload,
+            fallback_query=self._suggest_fallback_query(req.query, payload),
+        )
+        if not vet:
+            return payload
+
+        reason = vet.get("reason") or ""
+        if reason:
+            payload["diagnostics"]["warnings"].append(f"final_vet: {reason}")
+
+        if not vet.get("useful", False):
+            payload["diagnostics"]["warnings"].append("final_vet: response rejected by compiler")
+            payload["diagnostics"]["coverage_notes"].append("final_vet_rejected=true")
+            payload["diagnostics"]["coverage_notes"].append(f"final_vet_fallback_query={vet.get('fallback_query') or req.query}")
+
+        return payload
+
+    def _looks_useful(self, payload: Dict[str, Any]) -> bool:
+        citations = payload.get("citations", []) or []
+        sources = payload.get("sources", []) or []
+        findings = payload.get("findings", []) or []
+        direct_answer = str(payload.get("direct_answer", "")).strip()
+        summary = str(payload.get("summary", "")).strip()
+        confidence = str(payload.get("confidence", "")).strip().lower()
+        diagnostics = payload.get("diagnostics", {}) if isinstance(payload.get("diagnostics", {}), dict) else {}
+        errors = diagnostics.get("errors", []) if isinstance(diagnostics, dict) else []
+
+        if errors:
+            return False
+        if len(citations) < 3 or len(sources) < 3 or len(findings) < 2:
+            return False
+        if not direct_answer or not summary:
+            return False
+        if confidence == "low":
+            return False
+        return True
+
+    def _suggest_fallback_query(self, query: str, payload: Dict[str, Any]) -> str:
+        vet_hint = str(payload.get("direct_answer", "")).strip()
+        if vet_hint:
+            titles = [item.get("title", "") for item in payload.get("citations", [])[:3] if isinstance(item, dict)]
+            if titles:
+                return f"{query} {' '.join(titles[:2])}"
+        return self.planner.followup_query(query, [item.get("claim", "") for item in payload.get("findings", []) if isinstance(item, dict)])
+
+    def _research_payload_from_perplexity(
+        self,
+        req: SearchRequest,
+        original_payload: Dict[str, Any],
+        fallback_response: PerplexitySearchResponse,
+        request_id: str,
+        started: float,
+        fallback_query: str,
+    ) -> Dict[str, Any]:
+        citations: List[Dict[str, Any]] = []
+        findings: List[Dict[str, Any]] = []
+        sources: List[Dict[str, Any]] = []
+
+        for idx, result in enumerate(fallback_response.results, start=1):
+            citations.append(
+                {
+                    "id": idx,
+                    "title": result.title,
+                    "url": result.url,
+                    "source": urlparse(result.url).netloc or "search",
+                    "excerpt": result.snippet,
+                    "published_at": "",
+                    "last_updated": result.last_updated,
+                    "language": "en",
+                    "relevance_score": float(result.confidence or 0.0),
+                    "passage_id": f"fallback-{idx}",
+                }
+            )
+            findings.append({"claim": result.title or result.snippet or result.url, "citation_ids": [idx]})
+            sources.append({"title": result.title, "url": result.url, "source": urlparse(result.url).netloc or "search"})
+
+        direct_answer = ""
+        if fallback_response.results:
+            top = fallback_response.results[0]
+            direct_answer = top.snippet.strip() or top.title.strip() or top.url
+
+        summary = (
+            f"Final vetting rejected the long-form response, so a quick grounded search fallback returned {len(citations)} results."
+            if citations
+            else "Final vetting rejected the long-form response, and the fallback search returned no results."
+        )
+
+        diagnostics = dict(original_payload.get("diagnostics", {}))
+        diagnostics.setdefault("warnings", [])
+        diagnostics.setdefault("errors", [])
+        diagnostics.setdefault("coverage_notes", [])
+        diagnostics.setdefault("provider_trace", [])
+        diagnostics["warnings"].append("research_fallback_search_used")
+        diagnostics["coverage_notes"].append(f"fallback_query={fallback_query or req.query}")
+        diagnostics["coverage_notes"].append(f"fallback_results={len(citations)}")
+        diagnostics["provider_trace"].append({"provider": "fallback-search", "status": "used", "query": fallback_query or req.query})
+
+        confidence = "medium" if citations else "low"
+        payload = {
+            "query": req.query,
+            "mode": original_payload.get("mode", "research"),
+            "direct_answer": direct_answer,
+            "summary": summary,
+            "findings": findings,
+            "citations": citations,
+            "sources": sources,
+            "follow_up_queries": [],
+            "diagnostics": diagnostics,
+            "timings": {"total_ms": int((time.perf_counter() - started) * 1000)},
+            "confidence": confidence,
+            "legacy": original_payload.get("legacy"),
+        }
+        return payload
 
     def _normalize_queries(self, query: Any) -> List[str]:
         if isinstance(query, list):
