@@ -16,7 +16,7 @@ A milestone should only move to `done` after:
 | Milestone | Status | Dev | Test | Notes |
 |---|---|---|---|---|
 | MP-00 Contract and decision freeze | done | complete | pass | canonical docs added: 05/06/07 plus wrapper diagnosis artifact; pre-work frozen |
-| MP-01 Quick search hardening | in progress | complete | not started | provider fallback/cooldown hardened for empty-result failures; /search now caps provider work to remaining result budget |
+| MP-01 Quick search hardening | done | complete | pass | merged to main; provider fallback/cooldown hardened, result budgeting added, empty-result cooldown regression fixed |
 | MP-02 Planning and routing foundation | todo | not started | not started | |
 | MP-03 Research synthesis refactor | todo | not started | not started | |
 | MP-04 Vane integration repair | todo | not started | not started | |
