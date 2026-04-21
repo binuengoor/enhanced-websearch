@@ -154,12 +154,15 @@ class VaneClient:
                     ("answer",),
                     ("summary",),
                     ("message",),
+                    ("content",),
                     ("data", "answer"),
                     ("data", "summary"),
                     ("data", "message"),
+                    ("data", "content"),
                     ("result", "answer"),
                     ("result", "summary"),
                     ("result", "message"),
+                    ("result", "content"),
                 ],
             )
             summary = self._pick_first_text(
@@ -168,10 +171,15 @@ class VaneClient:
                     ("summary",),
                     ("answer",),
                     ("message",),
+                    ("content",),
                     ("data", "summary"),
                     ("data", "answer"),
+                    ("data", "message"),
+                    ("data", "content"),
                     ("result", "summary"),
                     ("result", "answer"),
+                    ("result", "message"),
+                    ("result", "content"),
                 ],
             )
             logger.info(
