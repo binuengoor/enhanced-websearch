@@ -88,19 +88,8 @@ class ResearchOrchestrator:
         if selected_mode == "research":
             iterations = min(req.max_iterations, mode_budget.max_queries)
 
-        await self._emit_progress(
-            progress_callback,
-            type="progress",
-            state="search_started",
-            request_id=request_id,
-            mode=selected_mode,
-            message="Search started",
-            total_cycles=iterations,
-        )
-
         seen_titles: List[str] = []
         for cycle in range(iterations):
-            query_text = plan[min(cycle, len(plan) - 1)]["text"] if cycle < len(plan) else req.query
             await self._emit_progress(
                 progress_callback,
                 type="progress",

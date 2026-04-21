@@ -91,6 +91,9 @@ async def research_search(
         response = await orch.execute_search(internal_request)
         return response.model_dump()
 
+    # Pre-generate request id so error events carry proper identity
+    request_id = uuid.uuid4().hex[:8]
+
     async def event_stream():
         queue: asyncio.Queue[ProgressEvent | dict | None] = asyncio.Queue()
 
@@ -106,7 +109,7 @@ async def research_search(
                     ProgressEvent(
                         type="error",
                         state="error",
-                        request_id="unknown",
+                        request_id=request_id,
                         mode="research",
                         error=str(exc),
                         message="Search failed",
