@@ -122,7 +122,7 @@ Response shape is stable and includes:
 
 - query, mode, direct_answer, summary
 - findings, citations, sources, follow_up_queries
-- diagnostics: runtime, query_plan, provider_trace, cache, errors, warnings
+- diagnostics: runtime, routing_decision, research_plan, query_plan, provider_trace, cache, errors, warnings
 - timings.total_ms
 - confidence
 
@@ -189,6 +189,20 @@ MCP host-header behavior:
 - FastMCP matches the full `Host` header, and the service now allows both bare hosts and wildcard-port entries.
 - To allow local/LAN MCP clients, set `EWS_MCP_ALLOWED_HOSTS` with either bare hosts or wildcard-port entries (for example `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `10.1.1.150`, `10.1.1.150:*`).
 - Plain host values are normalized to both bare and wildcard-port form by the service.
+
+## Planning foundation
+
+`/internal/search` and `/research` now expose two thin structured planning artifacts in diagnostics:
+
+- `routing_decision`: requested mode, selected mode, source of the decision, heuristic reason, and detected query profile
+- `research_plan`: bounded step list with the initial query-expansion plan and max iteration budget
+
+Current behavior remains intentionally conservative:
+
+- mode selection is still heuristic-first
+- `/search` remains on the concise fast path
+- long-form execution still uses the existing orchestrator loop
+- the new schema is there to support later LLM-assisted routing without changing endpoint contracts again
 
 ## Provider routing behavior
 

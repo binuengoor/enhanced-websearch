@@ -6,8 +6,32 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 Mode = Literal["auto", "fast", "deep", "research", "fast_fallback"]
+ExecutionMode = Literal["fast", "deep", "research", "fast_fallback"]
 SourceMode = Literal["web", "academia", "social", "all"]
 DepthMode = Literal["quick", "balanced", "quality"]
+DecisionSource = Literal["heuristic", "llm", "override"]
+
+
+class RoutingDecision(BaseModel):
+    requested_mode: Mode
+    selected_mode: ExecutionMode
+    decision_source: DecisionSource
+    reason: str
+    profile: Dict[str, bool] = Field(default_factory=dict)
+
+
+class ResearchPlanStep(BaseModel):
+    step: str
+    text: str
+    purpose: str
+
+
+class ResearchPlan(BaseModel):
+    query: str
+    mode: ExecutionMode
+    steps: List[ResearchPlanStep] = Field(default_factory=list)
+    max_iterations: int = 1
+    bounded: bool = True
 
 
 class SearchRequest(BaseModel):
@@ -118,6 +142,8 @@ class SearchDiagnostics(BaseModel):
     warnings: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
     runtime: Dict[str, Any] = Field(default_factory=dict)
+    routing_decision: RoutingDecision | None = None
+    research_plan: ResearchPlan | None = None
     query_plan: List[Dict[str, str]] = Field(default_factory=list)
     iterations: int = 1
     coverage_notes: List[str] = Field(default_factory=list)

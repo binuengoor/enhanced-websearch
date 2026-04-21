@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List, Literal
+
+
+RouteMode = Literal["fast", "deep", "research"]
+DecisionSource = Literal["heuristic", "llm", "override"]
 
 
 class QueryPlanner:
@@ -33,25 +37,56 @@ class QueryPlanner:
             "is_long": len(query.split()) > 15,
         }
 
-    def choose_mode(self, requested_mode: str, query: str) -> str:
+    def build_route_decision(self, requested_mode: str, query: str) -> Dict[str, object]:
         if requested_mode != "auto":
-            return requested_mode
+            return {
+                "requested_mode": requested_mode,
+                "selected_mode": requested_mode,
+                "decision_source": "override",
+                "reason": "caller_selected_mode",
+                "profile": self.classify_complexity(query),
+            }
+
         profile = self.classify_complexity(query)
+        selected_mode: RouteMode = "fast"
+        reason = "default_fast"
         if profile["is_recommendation"] or profile["is_comparison"]:
-            return "deep"
-        if profile["is_long"] and profile["is_specific"]:
-            return "research"
-        return "fast"
+            selected_mode = "deep"
+            reason = "comparison_or_recommendation"
+        elif profile["is_long"] and profile["is_specific"]:
+            selected_mode = "research"
+            reason = "long_and_specific"
+
+        return {
+            "requested_mode": requested_mode,
+            "selected_mode": selected_mode,
+            "decision_source": "heuristic",
+            "reason": reason,
+            "profile": profile,
+        }
+
+    def choose_mode(self, requested_mode: str, query: str) -> str:
+        return str(self.build_route_decision(requested_mode, query)["selected_mode"])
 
     def initial_plan(self, query: str, mode: str) -> List[Dict[str, str]]:
-        plan = [{"text": query, "purpose": "primary"}]
+        plan = [{"step": "primary", "text": query, "purpose": "primary"}]
         if mode in {"deep", "research"}:
             profile = self.classify_complexity(query)
             if profile["is_temporal"]:
-                plan.append({"text": f"{query} latest updates", "purpose": "recency-check"})
+                plan.append({"step": "recency-check", "text": f"{query} latest updates", "purpose": "recency-check"})
             if profile["is_comparison"]:
-                plan.append({"text": f"{query} benchmark", "purpose": "expansion"})
+                plan.append({"step": "expansion", "text": f"{query} benchmark", "purpose": "expansion"})
         return plan
+
+    def build_research_plan(self, query: str, mode: str, max_iterations: int) -> Dict[str, object]:
+        steps = self.initial_plan(query, mode)
+        return {
+            "query": query,
+            "mode": mode,
+            "steps": steps,
+            "max_iterations": max_iterations,
+            "bounded": True,
+        }
 
     def followup_query(self, query: str, seen_titles: List[str]) -> str:
         blob = " ".join(seen_titles).lower()

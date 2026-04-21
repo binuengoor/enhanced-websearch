@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from app.cache.memory_cache import InMemoryCache
 from app.core.config import AppConfig
 from app.models.contracts import PerplexitySearchRequest, PerplexitySearchResponse, PerplexitySearchResult
-from app.models.contracts import SearchDiagnostics, SearchRequest, SearchResponse
+from app.models.contracts import ResearchPlan, RoutingDecision, SearchDiagnostics, SearchRequest, SearchResponse
 from app.providers.router import ProviderRouter
 from app.services.fetcher import PageFetcher
 from app.services.planner import QueryPlanner
@@ -50,7 +50,8 @@ class ResearchOrchestrator:
     async def execute_search(self, req: SearchRequest) -> SearchResponse:
         request_id = uuid.uuid4().hex[:8]
         started = time.perf_counter()
-        selected_mode = self.planner.choose_mode(req.mode, req.query)
+        routing_decision = RoutingDecision.model_validate(self.planner.build_route_decision(req.mode, req.query))
+        selected_mode = routing_decision.selected_mode
         mode_budget = self.config.modes[selected_mode]
 
         logger.info(
@@ -65,7 +66,10 @@ class ResearchOrchestrator:
             req.include_legacy,
         )
 
-        plan = self.planner.initial_plan(req.query, selected_mode)
+        research_plan = ResearchPlan.model_validate(
+            self.planner.build_research_plan(req.query, selected_mode, req.max_iterations)
+        )
+        plan = [step.model_dump() for step in research_plan.steps]
         all_result_sets: List[List[Dict[str, Any]]] = []
         provider_trace: List[Dict[str, Any]] = []
         warnings: List[str] = []
@@ -82,7 +86,7 @@ class ResearchOrchestrator:
             query_text = plan[min(cycle, len(plan) - 1)]["text"] if cycle < len(plan) else req.query
             if cycle > 0 and selected_mode == "research":
                 query_text = self.planner.followup_query(req.query, seen_titles)
-                plan.append({"text": query_text, "purpose": "followup"})
+                plan.append({"step": "followup", "text": query_text, "purpose": "followup"})
                 followups.append(query_text)
 
             logger.info(
@@ -153,6 +157,8 @@ class ResearchOrchestrator:
             warnings=warnings,
             errors=errors,
             runtime=runtime,
+            routing_decision=routing_decision,
+            research_plan=research_plan,
             query_plan=plan,
             iterations=iterations,
             coverage_notes=[
