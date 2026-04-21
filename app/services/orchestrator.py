@@ -90,6 +90,7 @@ class ResearchOrchestrator:
 
         seen_titles: List[str] = []
         for cycle in range(iterations):
+            query_text = plan[min(cycle, len(plan) - 1)]["text"] if cycle < len(plan) else req.query
             await self._emit_progress(
                 progress_callback,
                 type="progress",
