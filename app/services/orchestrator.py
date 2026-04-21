@@ -101,6 +101,7 @@ class ResearchOrchestrator:
                 depth=req.depth,
                 max_attempts=mode_budget.max_provider_attempts,
                 request_id=request_id,
+                limit_override=req.user_context.get("limit_override"),
             )
             provider_trace.extend(trace)
             search_cache_state["hits"] += cache_meta["hits"]
@@ -226,6 +227,7 @@ class ResearchOrchestrator:
         source_mode = self._map_search_mode(req.search_mode)
         results: List[PerplexitySearchResult] = []
         seen_urls: set[str] = set()
+        total_results_budget = req.max_results
 
         if req.mode:
             logger.info(
@@ -284,6 +286,7 @@ class ResearchOrchestrator:
                     quick.get("max_iterations"),
                 )
 
+            remaining_results = max(1, total_results_budget - len(results))
             internal = SearchRequest(
                 query=query,
                 mode="fast",
@@ -307,6 +310,7 @@ class ResearchOrchestrator:
                     "search_before_date_filter": req.search_before_date_filter,
                     "last_updated_after_filter": req.last_updated_after_filter,
                     "last_updated_before_filter": req.last_updated_before_filter,
+                    "limit_override": remaining_results,
                 },
             )
             response = await self.execute_search(internal)
@@ -321,7 +325,7 @@ class ResearchOrchestrator:
             compiled = await self.compiler.compile_perplexity_results(
                 query=query,
                 candidates=compiler_input,
-                max_results=req.max_results,
+                max_results=remaining_results,
                 max_tokens_per_page=req.max_tokens_per_page,
             )
             if compiled:
@@ -387,13 +391,19 @@ class ResearchOrchestrator:
         depth: str,
         max_attempts: int,
         request_id: str,
+        limit_override: Any = None,
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], Dict[str, int]]:
+        limit = self.config.modes[mode].max_pages_to_fetch
+        if isinstance(limit_override, int) and limit_override > 0:
+            limit = min(limit, limit_override)
+
         options = {
-            "limit": self.config.modes[mode].max_pages_to_fetch,
+            "limit": limit,
             "source_mode": source_mode,
             "depth": depth,
             "request_id": request_id,
         }
+
         key = self._cache_key(query, mode, options)
         cached = self.search_cache.get(key)
         if cached:

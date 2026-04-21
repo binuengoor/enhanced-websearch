@@ -24,7 +24,7 @@ class ProviderRouter:
     def __init__(self, slots: List[ProviderSlot], cooldown_seconds: int, failure_threshold: int):
         self._slots = slots
         self._cooldown_seconds = cooldown_seconds
-        self._failure_threshold = failure_threshold
+        self._failure_threshold = max(1, failure_threshold)
         self._cursor = 0
         self._lock = Lock()
         self._health: Dict[str, ProviderHealthRecord] = {
@@ -76,6 +76,10 @@ class ProviderRouter:
         if rate_limited or rec.consecutive_failures >= self._failure_threshold:
             rec.cooldown_until = time.time() + self._cooldown_seconds
 
+    def _mark_empty_result(self, name: str) -> None:
+        # Repeated empty responses are usually a degraded provider, not a success.
+        self._mark_failure(name, "empty_results", rate_limited=False)
+
     async def routed_search(
         self,
         query: str,
@@ -126,7 +130,6 @@ class ProviderRouter:
                     query,
                 )
                 rows = await slot.provider.search(query, options)
-                self._mark_success(slot.provider.name)
                 logger.info(
                     "event=provider_success request_id=%s provider=%s attempt=%s result_count=%s latency_ms=%s",
                     request_id,
@@ -135,17 +138,28 @@ class ProviderRouter:
                     len(rows),
                     int((time.perf_counter() - started) * 1000),
                 )
+                latency_ms = int((time.perf_counter() - started) * 1000)
                 provider_trace.append(
                     {
                         "provider": slot.provider.name,
-                        "status": "success",
+                        "status": "success" if rows else "empty",
                         "result_count": len(rows),
                         "attempt": attempts,
-                        "latency_ms": int((time.perf_counter() - started) * 1000),
+                        "latency_ms": latency_ms,
                     }
                 )
                 if rows:
+                    self._mark_success(slot.provider.name)
                     return rows, provider_trace
+
+                self._mark_empty_result(slot.provider.name)
+                logger.warning(
+                    "event=provider_empty request_id=%s provider=%s attempt=%s latency_ms=%s",
+                    request_id,
+                    slot.provider.name,
+                    attempts,
+                    latency_ms,
+                )
             except RateLimitError as exc:
                 self._mark_failure(slot.provider.name, str(exc), rate_limited=True)
                 logger.warning(
