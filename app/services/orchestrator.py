@@ -1142,10 +1142,15 @@ class ResearchOrchestrator:
         candidate = cleaned
         for paragraph in paragraphs:
             plain = re.sub(r"\s+", " ", paragraph).strip()
-            if plain and not plain.startswith("#"):
-                candidate = plain
-                break
+            plain = re.sub(r"^[#*_`>\-\s]+", "", plain).strip()
+            if not plain:
+                continue
+            if len(plain) < 40 and re.fullmatch(r"[A-Za-z ]+:?", plain):
+                continue
+            candidate = plain
+            break
 
+        candidate = re.sub(r"^[#*_`>\-\s]+", "", candidate).strip()
         sentences = re.split(r"(?<=[.!?])\s+", candidate)
         summary = sentences[0].strip() if sentences else candidate
         if len(summary) < min(120, max_len) and len(sentences) > 1:
