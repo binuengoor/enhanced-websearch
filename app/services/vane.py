@@ -147,6 +147,9 @@ class VaneClient:
                 )
                 return {"enabled": True, "error": f"Vane HTTP {resp.status_code}", "sources": [], "optimization_mode": optimization_mode}
             body = resp.json()
+            raw_message = self._extract_text(body.get("message"))
+            if not body.get("answer") and not body.get("summary") and raw_message:
+                body = {**body, "answer": raw_message, "summary": raw_message}
             sources = self._extract_sources(body)
             answer = self._pick_first_text(
                 body,
