@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ServiceConfig(BaseModel):
@@ -99,6 +99,17 @@ class AppConfig(BaseModel):
     compiler: CompilerConfig = Field(default_factory=CompilerConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @model_validator(mode="after")
+    def validate_provider_preferences(self) -> "AppConfig":
+        known_provider_names = {provider.name for provider in self.providers}
+        for mode, prefs in self.provider_preferences.items():
+            unknown_names = sorted((set(prefs.prefer) | set(prefs.avoid)) - known_provider_names)
+            if unknown_names:
+                raise ValueError(
+                    f"provider_preferences[{mode}] references unknown providers: {', '.join(unknown_names)}"
+                )
+        return self
 
 
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.sample.yaml"

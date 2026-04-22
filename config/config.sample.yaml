@@ -8,6 +8,13 @@ routing:
   cooldown_seconds: 90
   failure_threshold: 2
 
+provider_preferences:
+  research:
+    prefer:
+      - exa
+    avoid:
+      - searxng
+
 modes:
   fast:
     max_provider_attempts: 2

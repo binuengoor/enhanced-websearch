@@ -311,6 +311,7 @@ YAML sections:
 
 - service
 - routing
+- provider_preferences
 - modes
 - providers
 - cache
@@ -318,6 +319,21 @@ YAML sections:
 - vane
 - planner
 - logging
+
+Provider preferences let you bias routing per mode without changing provider weights:
+
+```yaml
+provider_preferences:
+  research:
+    prefer: [exa]
+    avoid: [searxng]
+```
+
+Notes:
+- `prefer` providers are tried before neutral providers for that mode.
+- `avoid` providers are still eligible, but moved to the back of the mode-specific order.
+- Preferences preserve the router's normal weighted rotation within each group.
+- Config load now fails fast if a preferred or avoided provider name does not match a configured provider.
 
 ## Run
 
