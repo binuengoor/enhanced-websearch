@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 
 Mode = Literal["auto", "fast", "deep", "research", "fast_fallback"]
@@ -10,6 +11,16 @@ ExecutionMode = Literal["fast", "deep", "research", "fast_fallback"]
 SourceMode = Literal["web", "academia", "social", "all"]
 DepthMode = Literal["quick", "balanced", "quality"]
 DecisionSource = Literal["heuristic", "llm", "override"]
+
+
+def _validate_http_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("url must be a valid http or https URL")
+    return value
+
+
+HttpUrlString = Annotated[str, AfterValidator(_validate_http_url)]
 
 
 class RoutingDecision(BaseModel):
@@ -106,11 +117,11 @@ class PerplexitySearchResponse(BaseModel):
 
 
 class FetchRequest(BaseModel):
-    url: str
+    url: HttpUrlString
 
 
 class ExtractRequest(BaseModel):
-    url: str
+    url: HttpUrlString
     components: str = "all"
 
 

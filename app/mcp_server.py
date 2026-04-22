@@ -177,7 +177,11 @@ async def research(
     include_debug: bool = False,
     ctx: Context = None,
 ) -> dict[str, Any]:
-    """Run long-form research via /research and return the rich result payload."""
+    """Run long-form research via /research and return the rich result payload.
+
+    Prefer depth="balanced" or depth="quality". depth="quick" remains available
+    only as a compatibility alias during the depth terminology transition.
+    """
     payload = {
         "query": query,
         "source_mode": source_mode,

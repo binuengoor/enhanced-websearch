@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from html import unescape
 from io import BytesIO
@@ -7,6 +8,8 @@ from typing import Any, Dict
 
 import httpx
 from bs4 import BeautifulSoup
+
+logger = logging.getLogger(__name__)
 
 
 class PageFetcher:
@@ -32,6 +35,7 @@ class PageFetcher:
             async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
                 resp = await client.get(url)
         except httpx.HTTPError as exc:
+            logger.warning("fetch failed for %s: %s", url, exc)
             return {
                 "url": url,
                 "title": url,
@@ -44,6 +48,7 @@ class PageFetcher:
             }
 
         if resp.status_code >= 400:
+            logger.warning("fetch returned HTTP %s for %s", resp.status_code, resp.url)
             return {
                 "url": str(resp.url),
                 "title": str(resp.url),
@@ -98,6 +103,7 @@ class PageFetcher:
             async with httpx.AsyncClient(timeout=self.timeout_s, follow_redirects=True, headers=self.headers) as client:
                 resp = await client.get(url)
         except httpx.HTTPError as exc:
+            logger.warning("extract failed for %s: %s", url, exc)
             return {
                 "url": url,
                 "title": "",
@@ -113,6 +119,7 @@ class PageFetcher:
             }
 
         if resp.status_code >= 400:
+            logger.warning("extract returned HTTP %s for %s", resp.status_code, resp.url)
             return {
                 "url": str(resp.url),
                 "title": "",
@@ -222,11 +229,13 @@ class PageFetcher:
             async with httpx.AsyncClient(timeout=self.timeout_s + 10) as client:
                 resp = await client.post(self.flaresolverr_url, json=payload)
             if resp.status_code >= 400:
+                logger.warning("flaresolverr returned HTTP %s for %s", resp.status_code, url)
                 return ""
             body = resp.json()
             if body.get("status") == "ok":
                 return body.get("solution", {}).get("response", "")
-        except Exception:
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("flaresolverr fallback failed for %s: %s", url, exc)
             return ""
         return ""
 
@@ -236,13 +245,14 @@ class PageFetcher:
 
             reader = pypdf.PdfReader(BytesIO(content))
             return "\n\n".join([page.extract_text() or "" for page in reader.pages])[: self.max_chars]
-        except Exception:
-            pass
+        except (ImportError, ModuleNotFoundError, AttributeError, TypeError, ValueError) as exc:
+            logger.warning("pypdf extraction failed: %s", exc)
 
         try:
             import PyPDF2
 
             reader = PyPDF2.PdfReader(BytesIO(content))
             return "\n\n".join([page.extract_text() or "" for page in reader.pages])[: self.max_chars]
-        except Exception:
+        except (ImportError, ModuleNotFoundError, AttributeError, TypeError, ValueError) as exc:
+            logger.warning("PyPDF2 extraction failed: %s", exc)
             return "[PDF detected but extraction backend unavailable]"

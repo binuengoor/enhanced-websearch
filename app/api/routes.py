@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -19,6 +20,8 @@ from app.models.contracts import (
 )
 from app.services.orchestrator import ResearchOrchestrator
 from app.services.report_exporter import ReportExporter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -99,7 +102,10 @@ async def research_search(
 
     stream_progress = request.query_params.get("stream") == "true"
     if not stream_progress:
-        response = await orch.execute_search(internal_request, endpoint="/research")
+        try:
+            response = await orch.execute_search(internal_request, endpoint="/research")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return response.model_dump()
 
     # Pre-generate request id so error events carry proper identity
@@ -156,8 +162,10 @@ async def export_research_report(
     exporter: ReportExporter = Depends(get_report_exporter),
 ):
     try:
-        return exporter.export_research_report(payload.response)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, exporter.export_research_report, payload.response)
     except ValueError as exc:
+        logger.warning("research export failed: %s", exc)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
