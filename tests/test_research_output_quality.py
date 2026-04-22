@@ -33,8 +33,9 @@ class _StubVane:
 
 
 class _StubCompiler:
-    def __init__(self, vet_response=None):
+    def __init__(self, vet_response=None, vane_summary_response=None):
         self.vet_response = vet_response
+        self.vane_summary_response = vane_summary_response
 
     async def choose_search_profile(self, **kwargs):
         return None
@@ -44,6 +45,9 @@ class _StubCompiler:
 
     async def vet_research_response(self, **kwargs):
         return self.vet_response
+
+    async def summarize_vane_content(self, **kwargs):
+        return self.vane_summary_response
 
 
 class ResearchOutputQualityTests(unittest.TestCase):
@@ -317,12 +321,15 @@ Mergers can also increase mass, especially in galaxy collisions where two black 
             "Recent observations combine X-ray, radio, and infrared evidence to compare those growth channels rather than treating them as a single process."
         )
 
-        body, direct_answer, summary, decision = self.orchestrator._merge_vane_synthesis(
-            deep_synthesis={"answer": vane_answer, "summary": "Black holes grow through accretion and mergers."},
-            direct_answer="local answer",
-            summary="local summary",
-            body="local body",
-            mode="research",
+        body, direct_answer, summary, decision = asyncio.run(
+            self.orchestrator._merge_vane_synthesis(
+                query="How do black holes grow?",
+                deep_synthesis={"answer": vane_answer, "summary": "Black holes grow through accretion and mergers."},
+                direct_answer="local answer",
+                summary="local summary",
+                body="local body",
+                mode="research",
+            )
         )
 
         self.assertEqual(body, vane_answer)
@@ -330,23 +337,85 @@ Mergers can also increase mass, especially in galaxy collisions where two black 
         self.assertLess(len(direct_answer), len(vane_answer))
         self.assertTrue(summary)
         self.assertLessEqual(len(summary), len(direct_answer))
+        self.assertFalse(vane_answer.startswith(direct_answer))
+        self.assertFalse(direct_answer.startswith(summary))
         self.assertTrue(decision["accepted"])
         self.assertTrue(decision["body_preserved"])
         self.assertEqual(decision["body_source"], "vane_answer")
 
     def test_merge_vane_synthesis_rejects_filler_answer(self):
-        body, direct_answer, summary, decision = self.orchestrator._merge_vane_synthesis(
-            deep_synthesis={"answer": "I was not able to find the information.", "summary": "No results found."},
-            direct_answer="local answer",
-            summary="local summary",
-            body="local body",
-            mode="research",
+        body, direct_answer, summary, decision = asyncio.run(
+            self.orchestrator._merge_vane_synthesis(
+                query="How do black holes grow?",
+                deep_synthesis={"answer": "I was not able to find the information.", "summary": "No results found."},
+                direct_answer="local answer",
+                summary="local summary",
+                body="local body",
+                mode="research",
+            )
         )
 
         self.assertEqual(body, "local body")
         self.assertEqual(direct_answer, "local answer")
         self.assertFalse(decision["accepted"])
         self.assertEqual(decision["rejection_reason"], "filler_phrase")
+
+    def test_merge_vane_synthesis_uses_llm_shaping_when_available(self):
+        orchestrator = self._make_orchestrator(
+            compiler=_StubCompiler(
+                vane_summary_response={
+                    "direct_answer": "Black holes mostly grow by accreting gas, with mergers adding mass in some environments.",
+                    "summary": "Growth comes mainly from accretion, with mergers as a secondary channel.",
+                    "direct_source": "llm_summary",
+                    "summary_source": "llm_summary",
+                }
+            )
+        )
+        vane_answer = (
+            "Black holes grow mainly through accretion, where surrounding gas spirals inward, heats up, and emits radiation that lets astronomers estimate how quickly mass is being added. "
+            "They can also gain mass through mergers after galaxy collisions, and the balance depends on environment and cosmic era. "
+            "Recent observations compare those channels across multiple wavelengths."
+        )
+
+        body, direct_answer, summary, decision = asyncio.run(
+            orchestrator._merge_vane_synthesis(
+                query="How do black holes grow?",
+                deep_synthesis={"answer": vane_answer, "summary": "Black holes grow through accretion and mergers."},
+                direct_answer="local answer",
+                summary="local summary",
+                body="local body",
+                mode="research",
+            )
+        )
+
+        self.assertEqual(body, vane_answer)
+        self.assertEqual(decision["direct_answer_source"], "llm_summary")
+        self.assertEqual(decision["summary_source"], "llm_summary")
+        self.assertFalse(vane_answer.startswith(direct_answer))
+        self.assertFalse(direct_answer.startswith(summary))
+
+    def test_merge_vane_synthesis_reuses_good_vane_summary_when_llm_unavailable(self):
+        vane_answer = (
+            "Black holes gain mass through long periods of gas accretion and through mergers, with observations using emitted radiation and host-galaxy context to estimate which channel dominates.\n\n"
+            "The mix changes with environment, so modern surveys compare multiple wavelengths and populations rather than assuming one growth path."
+        )
+        vane_summary = "Black holes usually grow by accreting gas, while mergers matter more in some collision-rich environments."
+
+        body, direct_answer, summary, decision = asyncio.run(
+            self.orchestrator._merge_vane_synthesis(
+                query="How do black holes grow?",
+                deep_synthesis={"answer": vane_answer, "summary": vane_summary},
+                direct_answer="local answer",
+                summary="local summary",
+                body="local body",
+                mode="research",
+            )
+        )
+
+        self.assertEqual(body, vane_answer)
+        self.assertEqual(direct_answer, vane_summary)
+        self.assertEqual(decision["direct_answer_source"], "vane_summary")
+        self.assertFalse(direct_answer.startswith(summary))
 
     def test_accepted_vane_payload_skips_fallback_even_if_compact_gates_disagree(self):
         payload = {
@@ -470,7 +539,11 @@ Mergers can also increase mass, especially in galaxy collisions where two black 
         self.assertEqual(response.body, vane_answer)
         self.assertLess(len(response.direct_answer), len(vane_answer))
         self.assertLessEqual(len(response.summary), len(response.direct_answer))
+        self.assertFalse(vane_answer.startswith(response.direct_answer))
+        self.assertFalse(response.direct_answer.startswith(response.summary))
         self.assertTrue(response.diagnostics.synthesis["vane"]["body_preserved"])
+        self.assertIn(response.diagnostics.synthesis["vane"]["direct_answer_source"], {"vane_summary", "llm_summary", "fallback_truncation"})
+        self.assertIn(response.diagnostics.synthesis["vane"]["summary_source"], {"vane_summary", "llm_summary", "fallback_vane_summary", "fallback_truncation"})
         self.assertIn("vane", events)
         self.assertIn("complete", events)
 

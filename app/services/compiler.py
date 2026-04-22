@@ -334,6 +334,119 @@ class ResultCompiler:
             )
             return None
 
+    async def summarize_vane_content(
+        self,
+        query: str,
+        body: str,
+        vane_summary: str | None = None,
+    ) -> Dict[str, str] | None:
+        if not self.active:
+            return None
+
+        prompt = json.dumps(
+            {
+                "task": "Shape an accepted long-form research answer into a direct answer and a short summary.",
+                "query": query,
+                "body": body,
+                "vane_summary": vane_summary or "",
+                "output_schema": {
+                    "direct_answer": "string",
+                    "summary": "string",
+                    "direct_source": "vane_summary|llm_summary",
+                    "summary_source": "vane_summary|llm_summary",
+                },
+                "rules": [
+                    "Return JSON only.",
+                    "Preserve the user's intent and the factual meaning of the body.",
+                    "direct_answer must be a genuinely direct answer, not a verbatim prefix clipped from the body.",
+                    "summary must be shorter than direct_answer and read like a concise synthesis, not a substring truncation.",
+                    "Reuse vane_summary when it is already strong and faithful; otherwise rewrite from the body.",
+                    "Do not invent facts, numbers, dates, entities, or citations.",
+                ],
+            },
+            ensure_ascii=True,
+        )
+
+        payload = {
+            "model": self.model_id,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You rewrite grounded research answers into shorter forms. "
+                        "Only use the provided body and optional summary. "
+                        "Return JSON only."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            "temperature": 0,
+            "max_tokens": 320,
+            "response_format": {"type": "json_object"},
+        }
+
+        headers = {"Content-Type": "application/json"}
+        token = os.getenv("EWS_COMPILER_API_KEY", "") or os.getenv("LITELLM_API_KEY", "")
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        endpoint = self._chat_endpoint()
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout_s) as client:
+                resp = await client.post(endpoint, json=payload, headers=headers)
+            if resp.status_code >= 400:
+                logger.warning(
+                    "event=vane_summary_http_error status=%s model=%s endpoint=%s",
+                    resp.status_code,
+                    self.model_id,
+                    endpoint,
+                )
+                return None
+
+            body_json = resp.json()
+            content = body_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+            if isinstance(content, list):
+                content = "".join(
+                    part.get("text", "") if isinstance(part, dict) else str(part)
+                    for part in content
+                )
+
+            parsed = self._parse_compiler_content(content)
+            if not isinstance(parsed, dict):
+                return None
+
+            direct_answer = parsed.get("direct_answer")
+            summary = parsed.get("summary")
+            direct_source = parsed.get("direct_source")
+            summary_source = parsed.get("summary_source")
+            if not isinstance(direct_answer, str) or not direct_answer.strip():
+                return None
+            if not isinstance(summary, str) or not summary.strip():
+                return None
+
+            direct_source = direct_source.strip() if isinstance(direct_source, str) else "llm_summary"
+            summary_source = summary_source.strip() if isinstance(summary_source, str) else "llm_summary"
+            if direct_source not in {"vane_summary", "llm_summary"}:
+                direct_source = "llm_summary"
+            if summary_source not in {"vane_summary", "llm_summary"}:
+                summary_source = "llm_summary"
+
+            return {
+                "direct_answer": direct_answer.strip(),
+                "summary": summary.strip(),
+                "direct_source": direct_source,
+                "summary_source": summary_source,
+            }
+        except Exception as exc:
+            logger.warning(
+                "event=vane_summary_error model=%s endpoint=%s error_type=%s error=%r",
+                self.model_id,
+                endpoint,
+                type(exc).__name__,
+                exc,
+            )
+            return None
+
     def _chat_endpoint(self) -> str:
         if self.base_url.endswith("/chat/completions"):
             return self.base_url

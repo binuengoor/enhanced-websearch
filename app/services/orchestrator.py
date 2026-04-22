@@ -215,7 +215,8 @@ class ResearchOrchestrator:
                 vane_decision["rejection_reason"] = "error"
                 warnings.append(f"Vane unavailable: {deep_synthesis['error']}")
             else:
-                body, direct_answer, summary, vane_decision = self._merge_vane_synthesis(
+                body, direct_answer, summary, vane_decision = await self._merge_vane_synthesis(
+                    query=req.query,
                     deep_synthesis=deep_synthesis,
                     direct_answer=direct_answer,
                     summary=summary,
@@ -270,6 +271,8 @@ class ResearchOrchestrator:
                     "acceptance_reason": vane_decision.get("acceptance_reason", ""),
                     "rejection_reason": vane_decision.get("rejection_reason", ""),
                     "body_source": vane_decision.get("body_source", "local_synthesis"),
+                    "direct_answer_source": vane_decision.get("direct_answer_source", "local_synthesis"),
+                    "summary_source": vane_decision.get("summary_source", "local_synthesis"),
                     "has_answer": bool(deep_synthesis.get("answer")) if isinstance(deep_synthesis, dict) else False,
                     "has_summary": bool((deep_synthesis.get("summary") or deep_synthesis.get("message"))) if isinstance(deep_synthesis, dict) else False,
                     "source_count": len(deep_synthesis.get("sources", [])) if isinstance(deep_synthesis, dict) else 0,
@@ -1523,8 +1526,9 @@ class ResearchOrchestrator:
             return "medium"
         return "low"
 
-    def _merge_vane_synthesis(
+    async def _merge_vane_synthesis(
         self,
+        query: str,
         deep_synthesis: Dict[str, Any],
         direct_answer: str,
         summary: str,
@@ -1542,22 +1546,69 @@ class ResearchOrchestrator:
             "acceptance_reason": acceptance_reason,
             "rejection_reason": rejection_reason,
             "body_source": "vane_answer" if accepted else "local_synthesis",
+            "direct_answer_source": "local_synthesis",
+            "summary_source": "local_synthesis",
         }
 
         if accepted:
             preserved = vane_answer or vane_summary
             body = preserved
-            # Keep `direct_answer` compact for legacy clients while preserving the
-            # full long-form Vane output in `body`.
-            direct_answer = self._condense_vane_text(preserved, max_len=1800, max_sentences=6, preserve_structure=True)
-            if vane_summary:
-                summary = self._condense_vane_text(vane_summary, max_len=900, max_sentences=3, preserve_structure=True)
+            shaped = await self._shape_vane_summaries(query=query, body=preserved, vane_summary=vane_summary)
+            if shaped:
+                direct_answer = shaped["direct_answer"]
+                summary = shaped["summary"]
+                decision["direct_answer_source"] = shaped["direct_answer_source"]
+                decision["summary_source"] = shaped["summary_source"]
             else:
-                summary = self._condense_vane_text(direct_answer, max_len=900, max_sentences=3, preserve_structure=True)
+                direct_answer = self._condense_vane_text(preserved, max_len=1800, max_sentences=6, preserve_structure=True)
+                decision["direct_answer_source"] = "fallback_truncation"
+                if vane_summary:
+                    summary = self._condense_vane_text(vane_summary, max_len=900, max_sentences=3, preserve_structure=True)
+                    decision["summary_source"] = "fallback_vane_summary"
+                else:
+                    summary = self._condense_vane_text(direct_answer, max_len=900, max_sentences=3, preserve_structure=True)
+                    decision["summary_source"] = "fallback_truncation"
         elif vane_summary:
             summary = self._condense_vane_text(vane_summary, max_len=900, max_sentences=3, preserve_structure=True)
+            decision["summary_source"] = "fallback_vane_summary"
 
         return body, direct_answer, summary, decision
+
+    async def _shape_vane_summaries(self, query: str, body: str, vane_summary: str) -> Dict[str, str] | None:
+        llm_shaped = await self.compiler.summarize_vane_content(query=query, body=body, vane_summary=vane_summary or None)
+        if llm_shaped:
+            direct_answer = self._normalize_vane_text(llm_shaped.get("direct_answer", ""))
+            summary = self._normalize_vane_text(llm_shaped.get("summary", ""))
+            if direct_answer and summary and not self._is_truncation_like(body, direct_answer) and not self._is_truncation_like(direct_answer, summary):
+                return {
+                    "direct_answer": direct_answer,
+                    "summary": summary,
+                    "direct_answer_source": llm_shaped.get("direct_source", "llm_summary"),
+                    "summary_source": llm_shaped.get("summary_source", "llm_summary"),
+                }
+
+        direct_answer = ""
+        direct_source = ""
+        if vane_summary and self._looks_like_good_vane_summary(vane_summary, body):
+            direct_answer = self._normalize_vane_text(vane_summary)
+            direct_source = "vane_summary"
+        elif vane_summary and not self._is_truncation_like(body, vane_summary):
+            direct_answer = self._normalize_vane_text(vane_summary)
+            direct_source = "vane_summary"
+
+        if not direct_answer:
+            return None
+
+        summary = self._compress_summary_text(direct_answer, max_sentences=2, max_len=320)
+        if not summary or self._is_truncation_like(direct_answer, summary):
+            return None
+
+        return {
+            "direct_answer": direct_answer,
+            "summary": summary,
+            "direct_answer_source": direct_source,
+            "summary_source": "llm_summary" if direct_source != "vane_summary" else "vane_summary",
+        }
 
     def _normalize_vane_text(self, text: str) -> str:
         cleaned = str(text or "").replace("\r\n", "\n").strip()
@@ -1595,6 +1646,56 @@ class ResearchOrchestrator:
             return False, "", "low_information_density"
 
         return True, "substantive_longform", ""
+
+    def _looks_like_good_vane_summary(self, summary: str, body: str) -> bool:
+        normalized_summary = self._normalize_vane_text(summary)
+        if not normalized_summary:
+            return False
+        if len(normalized_summary) < 40:
+            return False
+        if self._is_truncation_like(body, normalized_summary):
+            return False
+        return bool(re.search(r"\b(is|are|was|were|because|through|while|can|may|shows|suggests|found)\b", normalized_summary.lower()))
+
+    def _is_truncation_like(self, source: str, candidate: str) -> bool:
+        normalized_source = re.sub(r"\s+", " ", self._normalize_vane_text(source)).strip().lower()
+        normalized_candidate = re.sub(r"\s+", " ", self._normalize_vane_text(candidate)).strip().lower()
+        if not normalized_source or not normalized_candidate:
+            return False
+        if normalized_source.startswith(normalized_candidate):
+            return True
+        if normalized_candidate in normalized_source[: max(len(normalized_candidate) + 80, int(len(normalized_source) * 0.7))]:
+            return True
+        return False
+
+    def _compress_summary_text(self, text: str, max_sentences: int, max_len: int) -> str:
+        cleaned = self._normalize_vane_text(text)
+        if not cleaned:
+            return ""
+
+        sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", cleaned) if s.strip()]
+        if not sentences:
+            return cleaned[:max_len].rstrip(" ,;:-")
+
+        picked: list[str] = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            lowered = sentence.lower()
+            if any(marker in lowered for marker in ("for example", "according to", "such as", "including", "recent observations")):
+                continue
+            next_text = " ".join(picked + [sentence]).strip()
+            if len(next_text) > max_len:
+                break
+            picked.append(sentence)
+            if len(picked) >= max_sentences:
+                break
+
+        if not picked:
+            picked = [sentences[0].strip()]
+
+        compressed = " ".join(picked).strip()
+        compressed = re.sub(r"\b(in particular|notably|overall),?\s+", "", compressed, flags=re.IGNORECASE)
+        return compressed[:max_len].rstrip(" ,;:-")
 
     def _condense_vane_text(self, text: str, max_len: int, max_sentences: int, preserve_structure: bool = False) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()
