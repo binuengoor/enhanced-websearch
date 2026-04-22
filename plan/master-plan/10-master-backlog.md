@@ -211,14 +211,25 @@ Add structured evaluation and failure detection.
 **Status:** todo
 
 **Purpose:**
-Add polish only after the core is stable.
+Add a small amount of operator and usability polish only after the core is stable.
 
 **Includes:**
-- saved reports
-- lightweight metrics/admin views
-- optional persistence improvements
+- saved-report export from completed research responses as file artifacts (for example JSON and Markdown) without introducing a report database
+- a minimal run-history view based on local files or in-memory state for recent requests, focused on debugging and manual inspection rather than analytics
+- lightweight diagnostics/admin endpoints or views that expose current config/runtime health and recent milestone-relevant counters without adding a dashboard system
+- optional persistence limited to small local-first artifacts that clearly support the two items above, only if in-memory state proves insufficient
+
+**Explicit anti-scope:**
+- no job queue or durable orchestration system
+- no mandatory database or cross-request state store by default
+- no heavy analytics pipeline, dashboard product, or multi-user admin surface
+- no changes that make the wrapper or frontend own backend logic
 
 **Dependencies:** MP-08
 
 **Done criteria:**
-- enhancements do not compromise backend simplicity or reliability
+- each enhancement is optional, local-first, and can be removed without affecting core search/research behavior
+- saved outputs come directly from completed request artifacts rather than a new long-lived report system
+- diagnostics remain lightweight and useful for debugging without becoming a full admin product
+- any persistence added is file-based or equivalently simple and remains non-essential to normal request handling
+- enhancements do not compromise backend simplicity, latency expectations, or reliability

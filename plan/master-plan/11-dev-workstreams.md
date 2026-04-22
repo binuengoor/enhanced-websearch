@@ -182,9 +182,20 @@ This file translates backlog items into development-focused work packages suitab
 ## MP-09 - Optional product enhancements
 
 ### Dev tasks
-- only start after the core is stable
-- scope enhancements tightly
-- keep operational complexity under control
+- define a simple saved-report export path for completed research results using existing response artifacts
+- add a minimal recent-run history surface backed by local files or ephemeral state rather than a service database
+- expose a tiny diagnostics surface for config/runtime health and recent request counters useful during manual validation
+- add persistence only if required for the above, keeping it file-based and optional
+- document explicit anti-scope so polish work does not sprawl into a platform project
+
+### Likely files
+- `app/api/routes.py`
+- `app/services/orchestrator.py`
+- `app/models/contracts.py`
+- small docs under `plan/master-plan/*`
+- optional local artifact helpers if needed
 
 ### Risks
 - polishing the wrong layer before the backend is trustworthy
+- accidentally introducing durable state assumptions into a local-first backend
+- letting diagnostics grow into an analytics/dashboard subsystem

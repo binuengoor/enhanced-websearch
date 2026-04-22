@@ -133,6 +133,21 @@ It is complete when the relevant test conditions pass.
 - quality gate failures are actually triggered when appropriate
 - benchmark results improve versus current baseline
 
+## MP-09 - Optional product enhancements
+
+### Test scenarios
+- export a completed research response into the chosen saved-report artifact formats
+- inspect recent-run history with and without optional file-backed persistence enabled
+- verify diagnostics/admin surface during normal operation and after a handled provider failure
+- restart the service with no optional persistence configured and confirm core search/research behavior is unchanged
+
+### Validate
+- saved-report artifacts match completed response data and do not require a database lookup path
+- recent-run history remains bounded, understandable, and non-essential to request execution
+- diagnostics expose useful operational facts without leaking unstable internal implementation details
+- optional persistence remains local-first, file-based, and safe to disable
+- MP-09 changes do not regress latency, reliability, or the thin-client architecture
+
 ## Suggested benchmark buckets
 
 - factual lookup
