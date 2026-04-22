@@ -29,6 +29,8 @@ Purpose:
 - `14-git-workflow.md` - local branch/commit workflow for safe parallel subagent execution
 - `29-re-entry-summary.md` - concise continuity/background note for resuming work later
 - `30-mp-08-quality-gates-test-plan.md` - initial MP-08 benchmark, fixture, and quality-gate plan
+- `36-research-output-quality-plan.md` - audit of current `/research` output degradation and corrective direction
+- `37-mp-10-research-output-preservation-implementation-plan.md` - executable backlog and milestone plan for preserving substantive Vane longform output
 
 ## Core position
 

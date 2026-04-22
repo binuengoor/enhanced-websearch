@@ -149,6 +149,26 @@ It is complete when the relevant test conditions pass.
 - MCP mirrors the same data model rather than inventing a second interpretation
 - MP-09 changes do not regress latency, reliability, or the thin-client architecture
 
+## MP-10 - Research output preservation
+
+### Test scenarios
+- non-streaming `/research` with a strong mocked Vane answer that should be preserved as the longform body
+- streaming `/research?stream=true` with the same strong mocked Vane answer and final-result parity checks
+- Vane filler/non-answer response such as `no results found` or `I was not able to find the information`
+- Vane empty or malformed response object
+- Vane timeout or transport failure path
+- accepted Vane response followed by usefulness/vetting checks that previously could have triggered fallback
+- compatibility behavior for clients still reading `direct_answer`
+
+### Validate
+- accepted substantive Vane output is preserved in the canonical body field without condensation
+- `summary` remains short and separate from the longform body
+- filler, empty, malformed, and failed Vane outputs trigger fallback synthesis
+- accepted Vane output is not replaced by generic vet/fallback logic
+- diagnostics clearly report whether the body came from preserved Vane or fallback synthesis
+- streaming and non-streaming final results carry equivalent body semantics
+- regression tests would fail if accepted Vane bodies were truncated or rewritten again
+
 ## Suggested benchmark buckets
 
 - factual lookup

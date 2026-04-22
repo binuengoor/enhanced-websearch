@@ -26,18 +26,19 @@ def _is_relaxed_but_grounded(data: dict[str, Any], citations: list[Any], sources
     confidence = str(data.get("confidence", "")).strip().lower()
     summary = str(data.get("summary", "")).strip()
     direct_answer = str(data.get("direct_answer", "")).strip()
+    body = str(data.get("body", "")).strip() or direct_answer
 
     if len(citations) < _RELAXED_MIN_CITATIONS or len(sources) < _RELAXED_MIN_SOURCES:
         return False
 
     if mode == "fast":
-        return len(findings) >= 1 and len(summary) >= 80 and len(direct_answer) >= 24 and confidence in {"medium", "high"}
+        return len(findings) >= 1 and len(summary) >= 80 and len(body) >= 24 and confidence in {"medium", "high"}
 
     return (
         len(findings) >= _MIN_FINDINGS
-        and confidence == "medium"
+        and confidence in {"medium", "high"}
         and len(summary) >= 120
-        and len(direct_answer) >= 40
+        and len(body) >= 40
     )
 
 
@@ -50,11 +51,12 @@ def looks_useful_search_response(payload: SearchResponse | Mapping[str, Any] | d
     findings = data.get("findings", []) or []
     direct_answer = str(data.get("direct_answer", "")).strip()
     summary = str(data.get("summary", "")).strip()
+    body = str(data.get("body", "")).strip() or direct_answer
     confidence = str(data.get("confidence", "")).strip().lower()
 
     if errors:
         return False
-    if not direct_answer or not summary:
+    if not body or not summary:
         return False
     if confidence == "low":
         return False

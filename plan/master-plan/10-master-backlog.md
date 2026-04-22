@@ -233,3 +233,28 @@ Add a small amount of operator and usability polish only after the core is stabl
 - diagnostics remain lightweight and useful for debugging without becoming a full admin product
 - any persistence added is file-based or equivalently simple and remains non-essential to normal request handling
 - enhancements do not compromise backend simplicity, latency expectations, or reliability
+
+## MP-10 - Research output preservation
+
+**Status:** in_progress
+
+**Purpose:**
+Correct the `/research` response path so substantive Vane longform output is preserved as the main body instead of being condensed or replaced.
+
+**Includes:**
+- contract updates for an explicit longform research body
+- pass-through-first Vane merge behavior
+- Vane empty/filler/non-answer detection
+- fallback synthesis changes that only trigger on real Vane failure or rejection
+- SSE/progress visibility for Vane acceptance, vetting, and fallback
+- regression coverage for preserved-body behavior
+
+**Dependencies:** MP-04, MP-05, MP-08
+
+**Done criteria:**
+- accepted substantive Vane output is preserved as the canonical research body
+- `summary` remains short and separate from the preserved body
+- filler, empty, malformed, or failed Vane responses trigger fallback synthesis
+- accepted Vane output is not silently replaced by generic vet/fallback logic
+- streaming and non-streaming `/research` return equivalent final body semantics
+- diagnostics and tests make preserved-vs-fallback behavior explicit

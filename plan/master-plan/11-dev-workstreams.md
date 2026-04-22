@@ -201,3 +201,30 @@ This file translates backlog items into development-focused work packages suitab
 - accidentally introducing durable state assumptions into a local-first backend
 - letting `/metrics` sprawl into a dashboard/analytics subsystem
 - duplicating health/metrics surfaces instead of enhancing one canonical API + MCP path
+
+## MP-10 - Research output preservation
+
+### Dev tasks
+- add an explicit longform `body` field to the research response contract and define compatibility semantics for `direct_answer`
+- refactor Vane merge behavior so accepted substantive Vane output is preserved as the main body rather than condensed
+- restrict condensation helpers and shape limits to summary generation only
+- implement deterministic empty/filler/non-answer heuristics for Vane output before fallback is considered
+- update vetting logic so preserved longform bodies are not rejected just for being long or differently structured
+- redesign fallback control flow so replacement synthesis only runs when Vane genuinely failed or was rejected
+- add progress/diagnostic signals for Vane acceptance, vetting, and fallback behavior
+- align streaming final payload semantics with non-streaming `/research`
+
+### Likely files
+- `app/services/orchestrator.py`
+- `app/services/compiler.py`
+- `app/models/contracts.py`
+- `app/api/routes.py`
+- quality helper modules and test fixtures if present
+- `plan/master-plan/*`
+
+### Risks
+- client breakage if longform semantics change without a compatibility transition
+- false positives in filler detection rejecting short but useful Vane answers
+- false negatives in filler detection allowing obvious non-answers through
+- existing usefulness/vetting logic still being tuned for compact responses and overriding preserved bodies
+- fallback remaining too thin if the body-preservation fix ships without a coherent degraded synthesis path

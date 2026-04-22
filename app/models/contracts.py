@@ -172,6 +172,7 @@ class SearchResponse(BaseModel):
     mode: Mode
     direct_answer: str
     summary: str
+    body: str
     findings: List[Finding]
     citations: List[Citation]
     sources: List[Source]
@@ -210,6 +211,9 @@ class ProgressEvent(BaseModel):
     state: Literal[
         "search_started",
         "evidence_gathering",
+        "vane",
+        "vetting",
+        "fallback",
         "synthesizing",
         "complete",
         "error",

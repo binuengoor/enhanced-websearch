@@ -169,9 +169,18 @@ class ResearchOrchestrator:
         sources = self._build_sources(citations)
         summary = self._build_summary(req.query, findings, citations, selected_mode)
         direct_answer = self._build_direct_answer(req.query, findings, summary, selected_mode)
+        body = direct_answer
         confidence = self._confidence(pages, errors)
 
         deep_synthesis = None
+        vane_decision = {
+            "used": False,
+            "body_preserved": False,
+            "accepted": False,
+            "acceptance_reason": "not_attempted",
+            "rejection_reason": "",
+            "body_source": "local_synthesis",
+        }
         await self._emit_progress(
             progress_callback,
             type="progress",
@@ -182,6 +191,15 @@ class ResearchOrchestrator:
             total_cycles=iterations,
         )
         if selected_mode in {"deep", "research"}:
+            await self._emit_progress(
+                progress_callback,
+                type="progress",
+                state="vane",
+                request_id=request_id,
+                mode=selected_mode,
+                message="Evaluating Vane synthesis",
+                total_cycles=iterations,
+            )
             vane_depth = self._select_vane_depth(req.query, req.depth, selected_mode)
             logger.info(
                 "event=vane_selected request_id=%s mode=%s query=%r depth=%s selected_vane_depth=%s",
@@ -192,22 +210,26 @@ class ResearchOrchestrator:
                 vane_depth,
             )
             deep_synthesis = await self.vane.deep_search(req.query, req.source_mode, vane_depth)
+            vane_decision["used"] = bool(deep_synthesis and not deep_synthesis.get("error"))
             if deep_synthesis.get("error"):
+                vane_decision["rejection_reason"] = "error"
                 warnings.append(f"Vane unavailable: {deep_synthesis['error']}")
             else:
-                direct_answer, summary = self._merge_vane_synthesis(
+                body, direct_answer, summary, vane_decision = self._merge_vane_synthesis(
                     deep_synthesis=deep_synthesis,
                     direct_answer=direct_answer,
                     summary=summary,
+                    body=body,
                     mode=selected_mode,
-                    requested_depth=req.depth,
                 )
                 logger.info(
-                    "event=vane_promoted request_id=%s mode=%s has_answer=%s has_summary=%s",
+                    "event=vane_promoted request_id=%s mode=%s accepted=%s has_answer=%s has_summary=%s reason=%s",
                     request_id,
                     selected_mode,
+                    vane_decision.get("accepted"),
                     bool(deep_synthesis.get("answer")),
                     bool(deep_synthesis.get("summary") or deep_synthesis.get("message")),
+                    vane_decision.get("acceptance_reason") or vane_decision.get("rejection_reason"),
                 )
 
         runtime = {
@@ -242,11 +264,18 @@ class ResearchOrchestrator:
             synthesis={
                 **evidence["diagnostics"],
                 "vane": {
-                    "used": bool(deep_synthesis and not deep_synthesis.get("error")),
+                    "used": vane_decision.get("used", False),
+                    "accepted": vane_decision.get("accepted", False),
+                    "body_preserved": vane_decision.get("body_preserved", False),
+                    "acceptance_reason": vane_decision.get("acceptance_reason", ""),
+                    "rejection_reason": vane_decision.get("rejection_reason", ""),
+                    "body_source": vane_decision.get("body_source", "local_synthesis"),
                     "has_answer": bool(deep_synthesis.get("answer")) if isinstance(deep_synthesis, dict) else False,
                     "has_summary": bool((deep_synthesis.get("summary") or deep_synthesis.get("message"))) if isinstance(deep_synthesis, dict) else False,
                     "source_count": len(deep_synthesis.get("sources", [])) if isinstance(deep_synthesis, dict) else 0,
                 },
+                "fallback_used": False,
+                "fallback_reason": "",
             },
         )
 
@@ -255,6 +284,7 @@ class ResearchOrchestrator:
             "mode": selected_mode,
             "direct_answer": direct_answer,
             "summary": summary,
+            "body": body,
             "findings": findings,
             "citations": citations if req.include_citations else [],
             "sources": sources,
@@ -272,6 +302,7 @@ class ResearchOrchestrator:
                 started=started,
                 selected_mode=selected_mode,
                 mode_budget=mode_budget,
+                progress_callback=progress_callback,
             )
             if vetted_payload is not None:
                 payload = vetted_payload
@@ -593,7 +624,22 @@ class ResearchOrchestrator:
         started: float,
         selected_mode: str,
         mode_budget: Any,
+        progress_callback: ProgressCallback | None = None,
     ) -> Dict[str, Any] | None:
+        vane_info = payload.get("diagnostics", {}).get("synthesis", {}).get("vane", {})
+        vane_accepted = bool(vane_info.get("accepted"))
+
+        if vane_accepted:
+            return None
+
+        await self._emit_progress(
+            progress_callback,
+            type="progress",
+            state="vetting",
+            request_id=request_id,
+            mode=selected_mode,
+            message="Vetting research response quality",
+        )
         if not self._looks_useful(payload):
             payload = await self._run_research_vet(req, payload, request_id)
 
@@ -601,6 +647,17 @@ class ResearchOrchestrator:
             return None
 
         fallback_query = self._suggest_fallback_query(req.query, payload)
+        payload.setdefault("diagnostics", {}).setdefault("synthesis", {})["fallback_reason"] = (
+            vane_info.get("rejection_reason") or "quality_gate_rejected"
+        )
+        await self._emit_progress(
+            progress_callback,
+            type="progress",
+            state="fallback",
+            request_id=request_id,
+            mode=selected_mode,
+            message="Running grounded fallback synthesis",
+        )
         logger.info(
             "event=research_fallback_triggered request_id=%s mode=%s query=%r fallback_query=%r",
             request_id,
@@ -709,6 +766,9 @@ class ResearchOrchestrator:
         diagnostics["coverage_notes"].append(f"fallback_query={fallback_query or req.query}")
         diagnostics["coverage_notes"].append(f"fallback_results={len(citations)}")
         diagnostics["provider_trace"].append({"provider": "fallback-search", "status": "used", "query": fallback_query or req.query})
+        diagnostics.setdefault("synthesis", {})["fallback_used"] = True
+        diagnostics.setdefault("synthesis", {})["fallback_reason"] = diagnostics.get("synthesis", {}).get("fallback_reason") or "vane_rejected_or_unavailable"
+        diagnostics.setdefault("synthesis", {})["body_source"] = "fallback_synthesis"
 
         confidence = "medium" if citations else "low"
         payload = {
@@ -716,6 +776,7 @@ class ResearchOrchestrator:
             "mode": original_payload.get("mode", "research"),
             "direct_answer": direct_answer,
             "summary": summary,
+            "body": direct_answer,
             "findings": findings,
             "citations": citations,
             "sources": sources,
@@ -725,6 +786,8 @@ class ResearchOrchestrator:
             "confidence": confidence,
             "legacy": original_payload.get("legacy"),
         }
+        payload["diagnostics"]["synthesis"].setdefault("vane", {})["body_preserved"] = False
+        payload["diagnostics"]["synthesis"]["vane"]["accepted"] = False
         return payload
 
     def _normalize_queries(self, query: Any) -> List[str]:
@@ -779,7 +842,7 @@ class ResearchOrchestrator:
         for source in response.sources:
             url = source.url
             citation = citation_map.get(url, {})
-            snippet = citation.get("excerpt") or response.summary or response.direct_answer or ""
+            snippet = citation.get("excerpt") or response.summary or response.body or response.direct_answer or ""
             results.append(
                 PerplexitySearchResult(
                     title=source.title or citation.get("title") or "Untitled",
@@ -789,12 +852,12 @@ class ResearchOrchestrator:
                     last_updated=citation.get("last_updated") or None,
                 )
             )
-        if not results and response.direct_answer:
+        if not results and (response.body or response.direct_answer):
             results.append(
                 PerplexitySearchResult(
                     title=response.query,
                     url="",
-                    snippet=response.direct_answer,
+                    snippet=response.body or response.direct_answer,
                     date=None,
                     last_updated=None,
                 )
@@ -1465,42 +1528,73 @@ class ResearchOrchestrator:
         deep_synthesis: Dict[str, Any],
         direct_answer: str,
         summary: str,
+        body: str,
         mode: str,
-        requested_depth: str,
-    ) -> tuple[str, str]:
-        vane_answer = (deep_synthesis.get("answer") or "").strip()
-        vane_summary = (deep_synthesis.get("summary") or deep_synthesis.get("message") or "").strip()
+    ) -> tuple[str, str, str, Dict[str, Any]]:
+        vane_answer = self._normalize_vane_text(deep_synthesis.get("answer", ""))
+        vane_summary = self._normalize_vane_text(deep_synthesis.get("summary") or deep_synthesis.get("message") or "")
+        accepted, acceptance_reason, rejection_reason = self._assess_vane_answer(vane_answer if vane_answer else vane_summary)
 
-        answer_limits, summary_limits = self._vane_shape_limits(mode, requested_depth)
-        if vane_answer:
-            direct_answer = self._condense_vane_text(vane_answer, **answer_limits)
-        if vane_summary:
-            summary = self._condense_vane_text(vane_summary, **summary_limits)
-        elif vane_answer:
-            summary = self._condense_vane_text(vane_answer, **summary_limits)
+        decision = {
+            "used": True,
+            "body_preserved": accepted,
+            "accepted": accepted,
+            "acceptance_reason": acceptance_reason,
+            "rejection_reason": rejection_reason,
+            "body_source": "vane_answer" if accepted else "local_synthesis",
+        }
 
-        return direct_answer, summary
+        if accepted:
+            preserved = vane_answer or vane_summary
+            body = preserved
+            # Keep `direct_answer` compact for legacy clients while preserving the
+            # full long-form Vane output in `body`.
+            direct_answer = self._condense_vane_text(preserved, max_len=1800, max_sentences=6, preserve_structure=True)
+            if vane_summary:
+                summary = self._condense_vane_text(vane_summary, max_len=900, max_sentences=3, preserve_structure=True)
+            else:
+                summary = self._condense_vane_text(direct_answer, max_len=900, max_sentences=3, preserve_structure=True)
+        elif vane_summary:
+            summary = self._condense_vane_text(vane_summary, max_len=900, max_sentences=3, preserve_structure=True)
 
-    def _vane_shape_limits(self, mode: str, requested_depth: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        if requested_depth == "quality":
-            return (
-                {"max_len": 6800, "max_sentences": 18, "preserve_structure": True},
-                {"max_len": 2600, "max_sentences": 8, "preserve_structure": True},
-            )
-        if mode == "deep":
-            return (
-                {"max_len": 2400, "max_sentences": 7, "preserve_structure": True},
-                {"max_len": 900, "max_sentences": 3, "preserve_structure": True},
-            )
-        if mode == "research":
-            return (
-                {"max_len": 4800, "max_sentences": 14, "preserve_structure": True},
-                {"max_len": 1800, "max_sentences": 6, "preserve_structure": True},
-            )
-        return (
-            {"max_len": 700, "max_sentences": 2, "preserve_structure": False},
-            {"max_len": 300, "max_sentences": 1, "preserve_structure": False},
-        )
+        return body, direct_answer, summary, decision
+
+    def _normalize_vane_text(self, text: str) -> str:
+        cleaned = str(text or "").replace("\r\n", "\n").strip()
+        cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+        return cleaned
+
+    def _assess_vane_answer(self, text: str) -> tuple[bool, str, str]:
+        normalized = self._normalize_vane_text(text)
+        if not normalized:
+            return False, "", "empty"
+
+        lowered = re.sub(r"\s+", " ", normalized.lower()).strip()
+        filler_phrases = [
+            "no results found",
+            "i was not able to find the information",
+            "i couldn't find enough information",
+            "there is insufficient information available",
+            "i do not have enough information",
+            "unable to find relevant information",
+            "sorry, but i couldn't find",
+        ]
+        if any(phrase in lowered for phrase in filler_phrases):
+            return False, "", "filler_phrase"
+
+        stripped = re.sub(r"[^a-z0-9]", "", lowered)
+        if len(stripped) < 120:
+            return False, "", "too_short"
+
+        sentence_count = len([s for s in re.split(r"(?<=[.!?])\s+", normalized) if s.strip()])
+        paragraph_count = len([p for p in re.split(r"\n\s*\n", normalized) if p.strip()])
+        if sentence_count < 3 and paragraph_count < 2:
+            return False, "", "insufficient_structure"
+
+        if not re.search(r"\b(is|are|was|were|because|through|however|while|according|suggests|shows|reported|observed|measured)\b", lowered):
+            return False, "", "low_information_density"
+
+        return True, "substantive_longform", ""
 
     def _condense_vane_text(self, text: str, max_len: int, max_sentences: int, preserve_structure: bool = False) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()

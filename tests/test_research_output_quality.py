@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 from types import SimpleNamespace
 
 from app.cache.memory_cache import InMemoryCache
 from app.services.orchestrator import ResearchOrchestrator
+from app.models.contracts import SearchRequest
 from app.services.planner import QueryPlanner
 from app.services.ranking import Ranker
 
@@ -23,11 +25,17 @@ class _StubFetcher:
 
 
 class _StubVane:
+    def __init__(self, response=None):
+        self.response = response or {"error": "disabled"}
+
     async def deep_search(self, query, source_mode, depth):
-        return {"error": "disabled"}
+        return self.response
 
 
 class _StubCompiler:
+    def __init__(self, vet_response=None):
+        self.vet_response = vet_response
+
     async def choose_search_profile(self, **kwargs):
         return None
 
@@ -35,12 +43,12 @@ class _StubCompiler:
         return None
 
     async def vet_research_response(self, **kwargs):
-        return None
+        return self.vet_response
 
 
 class ResearchOutputQualityTests(unittest.TestCase):
     def setUp(self):
-        config = SimpleNamespace(
+        self.config = SimpleNamespace(
             modes={
                 "fast": SimpleNamespace(max_provider_attempts=1, max_queries=1, max_pages_to_fetch=4),
                 "deep": SimpleNamespace(max_provider_attempts=1, max_queries=1, max_pages_to_fetch=4),
@@ -51,16 +59,19 @@ class ResearchOutputQualityTests(unittest.TestCase):
             planner=SimpleNamespace(llm_fallback_enabled=False),
             cache=SimpleNamespace(ttl_general_s=300, ttl_recency_s=45, page_cache_ttl_s=120),
         )
-        self.orchestrator = ResearchOrchestrator(
-            config=config,
+        self.orchestrator = self._make_orchestrator()
+
+    def _make_orchestrator(self, vane_response=None, compiler=None):
+        return ResearchOrchestrator(
+            config=self.config,
             router=_StubRouter(),
             search_cache=InMemoryCache(max_entries=8),
             page_cache=InMemoryCache(max_entries=8),
             fetcher=_StubFetcher(),
             planner=QueryPlanner(),
             ranker=Ranker(),
-            vane=_StubVane(),
-            compiler=_StubCompiler(),
+            vane=_StubVane(vane_response),
+            compiler=compiler or _StubCompiler(),
         )
 
     def test_best_excerpt_skips_boilerplate_and_fragment_lines(self):
@@ -298,6 +309,170 @@ Mergers can also increase mass, especially in galaxy collisions where two black 
         )
 
         self.assertGreaterEqual(len(clusters[0]), 2)
+
+    def test_merge_vane_synthesis_preserves_substantive_body(self):
+        vane_answer = (
+            "Black holes grow mainly through accretion, where surrounding gas spirals inward, heats up, and emits radiation that lets astronomers estimate how quickly mass is being added.\n\n"
+            "They can also gain mass through mergers, especially after galaxy collisions, and the balance between accretion and mergers depends on the environment and cosmic era.\n\n"
+            "Recent observations combine X-ray, radio, and infrared evidence to compare those growth channels rather than treating them as a single process."
+        )
+
+        body, direct_answer, summary, decision = self.orchestrator._merge_vane_synthesis(
+            deep_synthesis={"answer": vane_answer, "summary": "Black holes grow through accretion and mergers."},
+            direct_answer="local answer",
+            summary="local summary",
+            body="local body",
+            mode="research",
+        )
+
+        self.assertEqual(body, vane_answer)
+        self.assertNotEqual(direct_answer, "local answer")
+        self.assertLess(len(direct_answer), len(vane_answer))
+        self.assertTrue(summary)
+        self.assertLessEqual(len(summary), len(direct_answer))
+        self.assertTrue(decision["accepted"])
+        self.assertTrue(decision["body_preserved"])
+        self.assertEqual(decision["body_source"], "vane_answer")
+
+    def test_merge_vane_synthesis_rejects_filler_answer(self):
+        body, direct_answer, summary, decision = self.orchestrator._merge_vane_synthesis(
+            deep_synthesis={"answer": "I was not able to find the information.", "summary": "No results found."},
+            direct_answer="local answer",
+            summary="local summary",
+            body="local body",
+            mode="research",
+        )
+
+        self.assertEqual(body, "local body")
+        self.assertEqual(direct_answer, "local answer")
+        self.assertFalse(decision["accepted"])
+        self.assertEqual(decision["rejection_reason"], "filler_phrase")
+
+    def test_accepted_vane_payload_skips_fallback_even_if_compact_gates_disagree(self):
+        payload = {
+            "query": "black hole growth",
+            "mode": "research",
+            "direct_answer": "Long grounded body.",
+            "summary": "Short summary.",
+            "body": "Long grounded body.",
+            "findings": [],
+            "citations": [],
+            "sources": [],
+            "follow_up_queries": [],
+            "diagnostics": {"warnings": [], "errors": [], "coverage_notes": [], "provider_trace": [], "synthesis": {"vane": {"accepted": True}}},
+            "timings": {"total_ms": 1},
+            "confidence": "low",
+        }
+
+        result = asyncio.run(
+            self.orchestrator._maybe_vet_and_fallback_research(
+                req=SearchRequest(query="black hole growth", mode="research"),
+                payload=payload,
+                request_id="abc123",
+                started=0.0,
+                selected_mode="research",
+                mode_budget=self.config.modes["research"],
+            )
+        )
+
+        self.assertIsNone(result)
+
+    def test_fallback_payload_marks_body_source_and_body_field(self):
+        payload = {
+            "query": "black hole growth",
+            "mode": "research",
+            "direct_answer": "local",
+            "summary": "local summary",
+            "body": "local",
+            "findings": [],
+            "citations": [],
+            "sources": [],
+            "follow_up_queries": [],
+            "diagnostics": {"warnings": [], "errors": [], "coverage_notes": [], "provider_trace": [], "synthesis": {"vane": {"accepted": False}}},
+            "timings": {"total_ms": 1},
+            "confidence": "low",
+        }
+
+        fallback = self.orchestrator._research_payload_from_perplexity(
+            req=SearchRequest(query="black hole growth", mode="research"),
+            original_payload=payload,
+            fallback_response=SimpleNamespace(
+                results=[
+                    SimpleNamespace(
+                        title="Black hole growth observed",
+                        url="https://example.com/growth",
+                        snippet="Black holes grow by accreting nearby gas and by merging with other black holes.",
+                        last_updated=None,
+                        confidence=0.8,
+                    )
+                ]
+            ),
+            request_id="abc123",
+            started=0.0,
+            fallback_query="black hole growth observed",
+        )
+
+        self.assertEqual(fallback["body"], fallback["direct_answer"])
+        self.assertTrue(fallback["diagnostics"]["synthesis"]["fallback_used"])
+        self.assertEqual(fallback["diagnostics"]["synthesis"]["body_source"], "fallback_synthesis")
+
+    def test_execute_search_preserves_vane_body_and_stream_progress(self):
+        vane_answer = (
+            "Black holes grow through accretion and mergers. Observers estimate accretion rates by measuring radiation from infalling matter across multiple wavelengths.\n\n"
+            "Recent work compares environments, showing that dense gas supply, feedback, and galaxy interactions can all change which growth channel dominates.\n\n"
+            "That makes growth histories context dependent rather than a single universal sequence."
+        )
+        orchestrator = self._make_orchestrator(vane_response={"answer": vane_answer, "summary": "Accretion and mergers both matter."})
+
+        async def fake_search_once(*args, **kwargs):
+            return ([{"url": "https://example.com/a", "title": "A", "snippet": "snippet"}], [], {"hits": 0, "misses": 1})
+
+        async def fake_fetch_pages(query, rows):
+            return [
+                {
+                    "url": "https://example.com/a",
+                    "title": "Growth",
+                    "content": "Black holes grow through accretion and mergers with observational support from multiple instruments.",
+                    "snippet": "Black holes grow through accretion and mergers.",
+                    "quality_score": 0.8,
+                },
+                {
+                    "url": "https://example.com/b",
+                    "title": "Growth evidence",
+                    "content": "Accretion rates can be inferred from emitted radiation across wavelengths.",
+                    "snippet": "Accretion rates can be inferred from emitted radiation.",
+                    "quality_score": 0.7,
+                },
+                {
+                    "url": "https://example.com/c",
+                    "title": "Mergers",
+                    "content": "Mergers in galaxy collisions also build black hole mass.",
+                    "snippet": "Mergers also build black hole mass.",
+                    "quality_score": 0.7,
+                },
+            ]
+
+        orchestrator._search_once = fake_search_once
+        orchestrator._fetch_pages = fake_fetch_pages
+
+        events = []
+
+        async def on_progress(event):
+            events.append(event.state)
+
+        response = asyncio.run(
+            orchestrator.execute_search(
+                SearchRequest(query="how do black holes grow?", mode="research", include_citations=True),
+                progress_callback=on_progress,
+            )
+        )
+
+        self.assertEqual(response.body, vane_answer)
+        self.assertLess(len(response.direct_answer), len(vane_answer))
+        self.assertLessEqual(len(response.summary), len(response.direct_answer))
+        self.assertTrue(response.diagnostics.synthesis["vane"]["body_preserved"])
+        self.assertIn("vane", events)
+        self.assertIn("complete", events)
 
 
 if __name__ == "__main__":

@@ -120,17 +120,20 @@ class ResultCompiler:
                 "response": {
                     "direct_answer": response.get("direct_answer", "") if isinstance(response, dict) else "",
                     "summary": response.get("summary", "") if isinstance(response, dict) else "",
+                    "body": response.get("body", response.get("direct_answer", "")) if isinstance(response, dict) else "",
                     "findings_count": len(findings),
                     "citations_count": len(citations),
                     "sources_count": len(sources),
                     "confidence": response.get("confidence") if isinstance(response, dict) else None,
                     "warnings": diagnostics.get("warnings", []) if isinstance(diagnostics, dict) else [],
                     "errors": diagnostics.get("errors", []) if isinstance(diagnostics, dict) else [],
+                    "synthesis": diagnostics.get("synthesis", {}) if isinstance(diagnostics, dict) else {},
                 },
                 "fallback_query_hint": fallback_query,
                 "rules": [
                     "Return JSON only.",
                     "useful must be true only if the answer is grounded, non-empty, and not generic.",
+                    "A preserved longform body is desirable when it contains substantive grounded content; reject only if the body is empty, filler, or unsupported.",
                     "If not useful, provide a short fallback_query for a fresh concise search.",
                     "Prefer a fallback query that narrows the query while preserving user intent.",
                 ],
@@ -151,6 +154,7 @@ class ResultCompiler:
                     "content": (
                         "You are a strict final quality gate for long-form web research. "
                         "You must only approve responses that are grounded, useful, and non-generic. "
+                        "Do not penalize a response merely for being long if the body is substantive and grounded. "
                         "Return JSON only."
                     ),
                 },
