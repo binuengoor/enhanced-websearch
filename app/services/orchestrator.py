@@ -165,7 +165,8 @@ class ResearchOrchestrator:
         evidence = self._gather_evidence(req.query, pages, selected_mode)
         citations = evidence["citations"]
         findings = evidence["findings"]
-        sources = evidence["sources"]
+        findings, coverage_notes = self._ensure_query_coverage(req.query, findings, citations, selected_mode)
+        sources = self._build_sources(citations)
         summary = self._build_summary(req.query, findings, citations, selected_mode)
         direct_answer = self._build_direct_answer(req.query, findings, summary, selected_mode)
         confidence = self._confidence(pages, errors)
@@ -228,6 +229,7 @@ class ResearchOrchestrator:
             coverage_notes=[
                 f"fused_results={len(fused)}",
                 f"fetched_pages={len(pages)}",
+                *coverage_notes,
             ],
             search_count=len(plan),
             fetched_count=len(pages),
@@ -692,11 +694,11 @@ class ResearchOrchestrator:
             sources.append({"title": result.title, "url": result.url, "source": urlparse(result.url).netloc or "search"})
 
         summary = (
-            f"Final vetting rejected the long-form response, so a quick grounded fallback gathered {len(citations)} corroborating results."
+            self._build_summary(req.query, findings, citations, "research")
             if citations
             else "Final vetting rejected the long-form response, and the fallback search returned no grounded results."
         )
-        direct_answer = self._build_direct_answer(req.query, findings, summary, "fast")
+        direct_answer = self._build_direct_answer(req.query, findings, summary, "research")
 
         diagnostics = dict(original_payload.get("diagnostics", {}))
         diagnostics.setdefault("warnings", [])
@@ -1001,19 +1003,24 @@ class ResearchOrchestrator:
     def _best_excerpt(self, content: str, query: str) -> str:
         if not content:
             return ""
-        lines = [line.strip() for line in content.splitlines() if line.strip()]
-        if not lines:
+
+        candidates = [
+            self._clean_claim_text(part)
+            for part in re.split(r"(?<=[.!?])\s+|\n+", content)
+        ]
+
+        scored: List[tuple[float, str]] = []
+        for sentence in candidates[:140]:
+            score = self._claim_relevance_score(sentence, query, allow_question=False)
+            if score <= 0:
+                continue
+            scored.append((score, sentence))
+
+        if not scored:
             return ""
-        q_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
-        best = ""
-        best_score = -1
-        for line in lines[:60]:
-            terms = set(re.findall(r"[a-z0-9]+", line.lower()))
-            score = len(q_terms & terms)
-            if score > best_score and len(line) >= 40:
-                best = line
-                best_score = score
-        return (best or lines[0])[:320]
+
+        scored.sort(key=lambda item: item[0], reverse=True)
+        return scored[0][1][:320]
 
     def _gather_evidence(self, query: str, pages: List[Dict[str, Any]], mode: str) -> Dict[str, Any]:
         citations = self._build_citations(query, pages)
@@ -1031,37 +1038,261 @@ class ResearchOrchestrator:
             },
         }
 
+    def _ensure_query_coverage(
+        self,
+        query: str,
+        findings: List[Dict[str, Any]],
+        citations: List[Dict[str, Any]],
+        mode: str,
+    ) -> tuple[List[Dict[str, Any]], List[str]]:
+        if mode != "research":
+            return findings, []
+
+        subquestions = self.planner.decompose_query(query)
+        if len(subquestions) <= 1:
+            return findings, ["coverage_check=single_question"]
+
+        notes = [f"coverage_check=subquestions:{len(subquestions)}"]
+        augmented = list(findings)
+        assigned_ids = {cid for finding in findings for cid in finding.get("citation_ids", [])}
+
+        for subquestion in subquestions:
+            matched = any(
+                self._claim_relevance_score(finding.get("claim", ""), subquestion, allow_question=False) > 0
+                for finding in augmented
+            )
+            if matched:
+                notes.append(f"covered:{subquestion}")
+                continue
+
+            supplemental = self._supplemental_finding_for_subquestion(subquestion, citations, assigned_ids)
+            if supplemental:
+                augmented.append(supplemental)
+                assigned_ids.update(supplemental.get("citation_ids", []))
+                notes.append(f"supplemented:{subquestion}")
+            else:
+                notes.append(f"missing:{subquestion}")
+
+        ranked = sorted(
+            augmented,
+            key=lambda finding: max(
+                [self._citation_relevance_by_id(citations, cid) for cid in finding.get("citation_ids", [])] or [0.0]
+            ),
+            reverse=True,
+        )
+        return ranked, notes
+
     def _build_citations(self, query: str, pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         citations = []
-        for idx, page in enumerate(pages[:10], start=1):
+        for page in pages[:12]:
             url = page.get("url", "")
             parsed = urlparse(url)
             source = parsed.netloc.lower()
+            title = self._clean_claim_text(page.get("title", "Untitled")) or "Untitled"
+            excerpt = self._best_excerpt(page.get("content", ""), query)
+            excerpt_score = self._claim_relevance_score(excerpt, query, allow_question=False) if excerpt else 0.0
+            title_score = self._claim_relevance_score(title, query, allow_question=False)
+
+            if excerpt_score <= 0:
+                excerpt = self._clean_claim_text(page.get("snippet", ""))
+                excerpt_score = self._claim_relevance_score(excerpt, query, allow_question=False)
+            if excerpt_score <= 0:
+                continue
+
+            combined_score = max(float(page.get("quality_score", 0.0)), excerpt_score)
+            if combined_score < 0.2 and title_score <= 0:
+                continue
+
             citations.append(
                 {
-                    "id": idx,
-                    "title": page.get("title", "Untitled"),
+                    "id": len(citations) + 1,
+                    "title": title,
                     "url": url,
                     "source": source,
-                    "excerpt": self._best_excerpt(page.get("content", ""), query),
+                    "excerpt": excerpt,
                     "published_at": page.get("published_at", ""),
                     "last_updated": page.get("last_updated") or None,
                     "language": page.get("language") or None,
-                    "relevance_score": round(float(page.get("quality_score", 0.0)), 3),
-                    "passage_id": f"p{idx}-{re.sub(r'[^a-z0-9]+', '-', source)[:40] or 'source'}",
+                    "relevance_score": round(combined_score, 3),
+                    "passage_id": f"p{len(citations) + 1}-{re.sub(r'[^a-z0-9]+', '-', source)[:40] or 'source'}",
                 }
             )
         return citations
 
     def _build_findings(self, query: str, citations: List[Dict[str, Any]], mode: str) -> List[Dict[str, Any]]:
         findings = []
-        citation_clusters = self.ranker.cluster_citations(query, citations)
+        seen_claims = set()
+        strong_citations = [
+            item for item in citations
+            if self._claim_relevance_score(item.get("excerpt", ""), query, allow_question=False) > 0
+        ]
+        citation_clusters = self.ranker.cluster_citations(query, strong_citations)
         for cluster in citation_clusters[:6]:
+            cluster = sorted(cluster, key=lambda item: item.get("relevance_score", 0.0), reverse=True)
             claim = self._synthesize_claim(query, cluster, mode)
             citation_ids = [item["id"] for item in cluster if item.get("id")]
-            if claim and citation_ids:
-                findings.append({"claim": claim, "citation_ids": citation_ids})
+            if not claim or not citation_ids:
+                continue
+            claim_key = re.sub(r"\bcorroborated .*", "", claim.lower()).strip()
+            if claim_key in seen_claims:
+                continue
+            seen_claims.add(claim_key)
+            findings.append({"claim": claim, "citation_ids": citation_ids})
         return findings
+
+    def _clean_claim_text(self, text: str) -> str:
+        cleaned = re.sub(r"\s+", " ", text or "").strip(" ,;:-")
+        cleaned = re.sub(r"^[\[\]{}()<>|]+|[\[\]{}()<>|]+$", "", cleaned)
+        return cleaned
+
+    def _looks_like_boilerplate(self, text: str) -> bool:
+        lowered = text.lower()
+        if lowered in {"context", "abstract", "overview", "introduction", "menu", "home"}:
+            return True
+        boilerplate_patterns = [
+            r"please refer to the appropriate style manual",
+            r"all rights reserved",
+            r"cookie policy",
+            r"privacy policy",
+            r"terms of use",
+            r"skip to (main )?content",
+            r"subscribe to our",
+            r"sign up for our",
+            r"copyright",
+            r"javascript is required",
+        ]
+        return any(re.search(pattern, lowered) for pattern in boilerplate_patterns)
+
+    def _is_useful_claim_text(self, text: str, query: str, allow_question: bool = True) -> bool:
+        return self._claim_relevance_score(text, query, allow_question=allow_question) > 0
+
+    def _claim_relevance_score(self, text: str, query: str, allow_question: bool = True) -> float:
+        cleaned = self._clean_claim_text(text)
+        if len(cleaned) < 35:
+            return 0.0
+        if len(re.sub(r"[^A-Za-z0-9]", "", cleaned)) < 20:
+            return 0.0
+        if re.fullmatch(r"[.?!]+", cleaned):
+            return 0.0
+        if self._looks_like_boilerplate(cleaned):
+            return 0.0
+        if cleaned.endswith("?") and not allow_question:
+            return 0.0
+        if cleaned.endswith("..."):
+            return 0.0
+
+        lowered = cleaned.lower()
+        if self._looks_like_heading_or_title(lowered):
+            return 0.0
+
+        query_terms = self._query_terms(query)
+        if not query_terms:
+            return 0.0
+        text_terms = set(re.findall(r"[a-z0-9]+", lowered))
+        overlap_terms = query_terms & text_terms
+        overlap = len(overlap_terms)
+        if overlap == 0:
+            return 0.0
+
+        junk_patterns = [
+            r"^how many ",
+            r"^what is ",
+            r"^what are ",
+            r"^who is ",
+            r"^how do we know",
+            r"^learn more",
+            r"^read more",
+            r"^click here",
+            r"^related article",
+            r"^share this",
+            r"^photo by",
+        ]
+        if any(re.match(pattern, lowered) for pattern in junk_patterns):
+            return 0.0
+
+        if not re.search(r"[.!?]", cleaned) and len(cleaned.split()) < 10:
+            return 0.0
+
+        score = overlap / max(1, len(query_terms))
+        if overlap >= min(2, len(query_terms)):
+            score += 0.2
+        if re.search(r"\b(is|are|was|were|can|may|will|shows|found|reported|observed|measured|estimated|because|through|by)\b", lowered):
+            score += 0.15
+        if any(char.isdigit() for char in cleaned):
+            score += 0.05
+        if cleaned.endswith("?"):
+            score -= 0.2
+        if len(overlap_terms) == 1 and len(query_terms) >= 3:
+            score -= 0.15
+        return max(0.0, round(score, 4))
+
+    def _query_terms(self, query: str) -> set[str]:
+        terms = {
+            term
+            for term in re.findall(r"[a-z0-9]+", query.lower())
+            if len(term) > 2 and term not in {"about", "with", "from", "into", "their", "there", "which"}
+        }
+        expanded = set(terms)
+        for term in list(terms):
+            expanded.update(self._paraphrase_terms(term))
+        return expanded
+
+    def _paraphrase_terms(self, term: str) -> set[str]:
+        aliases = {
+            "blackholes": {"black", "hole", "holes", "blackhole", "blackholes"},
+            "blackhole": {"black", "hole", "holes", "blackhole", "blackholes"},
+            "form": {"form", "forms", "formed", "formation", "origins", "origin", "collapse"},
+            "discovery": {"discovery", "discoveries", "finding", "findings", "result", "results", "evidence"},
+            "recent": {"recent", "latest", "new", "past", "current"},
+            "past": {"past", "recent", "latest", "current"},
+            "year": {"year", "annual", "recent"},
+            "significant": {"significant", "important", "major", "notable", "key"},
+        }
+        return aliases.get(term, {term})
+
+    def _looks_like_heading_or_title(self, lowered: str) -> bool:
+        words = lowered.split()
+        if len(words) <= 8 and not re.search(r"[.!?]", lowered):
+            return True
+        title_like_patterns = [
+            r"^[a-z0-9 ,:'\-]+:$",
+            r"^[a-z0-9 ,:'\-]+\?$",
+            r"^(overview|background|summary|key points|takeaways|introduction)$",
+        ]
+        return any(re.match(pattern, lowered) for pattern in title_like_patterns)
+
+    def _synthesize_claim(self, query: str, citations: List[Dict[str, Any]], mode: str) -> str:
+        ranked_excerpts = []
+        for item in citations:
+            excerpt = self._clean_claim_text(item.get("excerpt", ""))
+            score = self._claim_relevance_score(excerpt, query, allow_question=False)
+            if score <= 0:
+                continue
+            ranked_excerpts.append((score + float(item.get("relevance_score", 0.0)), excerpt, item))
+
+        if not ranked_excerpts:
+            return ""
+
+        ranked_excerpts.sort(key=lambda item: item[0], reverse=True)
+        lead_excerpt = self._summarize_text(ranked_excerpts[0][1])
+        if self._claim_relevance_score(lead_excerpt, query, allow_question=False) <= 0:
+            return ""
+
+        supporting_excerpts = [item[1] for item in ranked_excerpts[:3]]
+        supporting_sources = {item[2].get("source", "") for item in ranked_excerpts[:3] if item[2].get("source")}
+        common_terms = self._common_terms(query, " ".join(supporting_excerpts))
+        corroboration_note = ""
+        if len(supporting_sources) > 1 and common_terms:
+            theme = ", ".join(common_terms[:3])
+            corroboration_note = f"Corroborated across {len(supporting_sources)} sources, with recurring focus on {theme}."
+        elif len(supporting_sources) > 1:
+            corroboration_note = f"Corroborated by {len(supporting_sources)} independent sources."
+
+        if mode == "research" and corroboration_note:
+            return f"{lead_excerpt} {corroboration_note}"
+        if corroboration_note:
+            return f"{lead_excerpt} {corroboration_note}"
+        return lead_excerpt
 
     def _build_sources(self, citations: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         seen = set()
@@ -1080,11 +1311,86 @@ class ResearchOrchestrator:
             )
         return sources
 
+    def _citation_relevance_by_id(self, citations: List[Dict[str, Any]], citation_id: int) -> float:
+        for citation in citations:
+            if citation.get("id") == citation_id:
+                return float(citation.get("relevance_score", 0.0))
+        return 0.0
+
+    def _supplemental_finding_for_subquestion(
+        self,
+        subquestion: str,
+        citations: List[Dict[str, Any]],
+        assigned_ids: set[int],
+    ) -> Dict[str, Any] | None:
+        ranked = []
+        for citation in citations:
+            excerpt = self._clean_claim_text(citation.get("excerpt", ""))
+            score = self._claim_relevance_score(excerpt, subquestion, allow_question=False)
+            if score <= 0:
+                continue
+            ranked.append((score + float(citation.get("relevance_score", 0.0)), citation, excerpt))
+
+        ranked.sort(key=lambda item: item[0], reverse=True)
+        if not ranked:
+            return None
+
+        top = ranked[0][1]
+        supporting_ids = [top.get("id")]
+        for _, citation, _ in ranked[1:4]:
+            cid = citation.get("id")
+            if cid and cid not in supporting_ids and cid not in assigned_ids:
+                supporting_ids.append(cid)
+            if len(supporting_ids) >= 2:
+                break
+
+        claim = self._summarize_text(ranked[0][2])
+        if not claim:
+            return None
+        return {"claim": claim, "citation_ids": [cid for cid in supporting_ids if cid]}
+
+    def _findings_by_subquestion(self, query: str, findings: List[Dict[str, Any]]) -> List[tuple[str, List[Dict[str, Any]]]]:
+        subquestions = self.planner.decompose_query(query)
+        if len(subquestions) <= 1 or not findings:
+            return []
+
+        grouped: List[tuple[str, List[Dict[str, Any]]]] = []
+        used_indexes: set[int] = set()
+        for subquestion in subquestions:
+            matches = [
+                (idx, finding)
+                for idx, finding in enumerate(findings)
+                if idx not in used_indexes and self._claim_relevance_score(finding.get("claim", ""), subquestion, allow_question=False) > 0
+            ]
+            if not matches:
+                continue
+            grouped.append((subquestion, [finding for idx, finding in matches[:2]]))
+            used_indexes.update(idx for idx, _ in matches[:2])
+
+        remaining = [finding for idx, finding in enumerate(findings) if idx not in used_indexes]
+        if remaining:
+            label = "Additional grounded evidence"
+            if grouped:
+                grouped.append((label, remaining[:2]))
+            else:
+                grouped.append((subquestions[0], remaining[:2]))
+        return grouped
+
     def _build_summary(self, query: str, findings: List[Dict[str, Any]], citations: List[Dict[str, Any]], mode: str) -> str:
         if not findings:
             return "No grounded synthesis was produced from the fetched sources."
-        lead = findings[0]["claim"]
+
         support = f"Supported by {len(citations)} citations across {len(self._build_sources(citations))} sources."
+        grouped = self._findings_by_subquestion(query, findings)
+        if mode == "research" and grouped:
+            sections = []
+            for subquestion, items in grouped[:3]:
+                label = subquestion.rstrip("?")
+                lead = items[0]["claim"]
+                sections.append(f"{label}: {lead}")
+            return "\n\n".join(sections + [support])
+
+        lead = findings[0]["claim"]
         if mode == "research" and len(findings) > 1:
             return f"{lead} The research pass also surfaced {len(findings) - 1} additional grounded finding(s). {support}"
         if mode == "deep" and len(findings) > 1:
@@ -1094,6 +1400,22 @@ class ResearchOrchestrator:
     def _build_direct_answer(self, query: str, findings: List[Dict[str, Any]], summary: str, mode: str) -> str:
         if not findings:
             return summary
+
+        grouped = self._findings_by_subquestion(query, findings)
+        if mode == "research" and grouped:
+            sections = []
+            for subquestion, items in grouped[:3]:
+                label = subquestion.rstrip("?")
+                details = [item["claim"] for item in items[:2]]
+                body = " ".join(details)
+                sections.append(f"{label}: {body}")
+            answer = "\n\n".join(sections)
+            if len(answer) < 500 and len(findings) > len(grouped):
+                extras = " ".join(item["claim"] for item in findings[len(grouped):len(grouped) + 2])
+                if extras:
+                    answer = f"{answer}\n\nAdditional context: {extras}"
+            return answer
+
         if mode == "deep" and len(findings) > 1:
             lead = findings[0]["claim"]
             support_points = "; ".join(item["claim"] for item in findings[1:])
@@ -1110,29 +1432,6 @@ class ResearchOrchestrator:
             return {"answer_style": "focused synthesis", "search_behavior": "single-pass high-quality collection"}
         return {"answer_style": "concise synthesis", "search_behavior": "single-pass collection"}
 
-    def _synthesize_claim(self, query: str, citations: List[Dict[str, Any]], mode: str) -> str:
-        excerpts = [item.get("excerpt", "").strip() for item in citations if item.get("excerpt")]
-        titles = [item.get("title", "").strip() for item in citations if item.get("title")]
-        if not excerpts:
-            return self._summarize_text(titles[0]) if titles else ""
-
-        lead_excerpt = self._summarize_text(excerpts[0])
-        common_terms = self._common_terms(query, " ".join(excerpts + titles))
-
-        if len(citations) > 1 and common_terms:
-            theme = ", ".join(common_terms[:3])
-            corroboration_note = f"Corroborated across {len(citations)} sources, with recurring focus on {theme}."
-        elif len(citations) > 1:
-            corroboration_note = f"Corroborated by {len(citations)} independent sources."
-        else:
-            corroboration_note = ""
-
-        if mode == "research" and corroboration_note:
-            return f"{lead_excerpt} {corroboration_note}"
-        if corroboration_note:
-            return f"{lead_excerpt} {corroboration_note}"
-        return lead_excerpt
-
     def _summarize_text(self, text: str) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip(" ;,-")
         if not cleaned:
@@ -1142,10 +1441,11 @@ class ResearchOrchestrator:
         return sentence[:280].rstrip(" ,;:-")
 
     def _common_terms(self, query: str, text: str) -> List[str]:
-        query_terms = set(re.findall(r"[a-z0-9]+", query.lower()))
+        query_terms = self._query_terms(query)
+        blocked = query_terms | {"study", "studies", "research", "article", "journal", "report", "reports", "data", "results", "using"}
         counts: Counter[str] = Counter()
         for term in re.findall(r"[a-z0-9]+", text.lower()):
-            if len(term) < 4 or term in query_terms:
+            if len(term) < 4 or term in blocked:
                 continue
             counts[term] += 1
         return [term for term, count in counts.most_common(5) if count > 1]
@@ -1184,30 +1484,62 @@ class ResearchOrchestrator:
     def _vane_shape_limits(self, mode: str, requested_depth: str) -> tuple[Dict[str, Any], Dict[str, Any]]:
         if requested_depth == "quality":
             return (
-                {"max_len": 2200, "max_sentences": 6},
-                {"max_len": 700, "max_sentences": 2},
+                {"max_len": 6800, "max_sentences": 18, "preserve_structure": True},
+                {"max_len": 2600, "max_sentences": 8, "preserve_structure": True},
             )
         if mode == "deep":
             return (
-                {"max_len": 1800, "max_sentences": 5},
-                {"max_len": 600, "max_sentences": 2},
+                {"max_len": 2400, "max_sentences": 7, "preserve_structure": True},
+                {"max_len": 900, "max_sentences": 3, "preserve_structure": True},
             )
         if mode == "research":
             return (
-                {"max_len": 1200, "max_sentences": 4},
-                {"max_len": 450, "max_sentences": 2},
+                {"max_len": 4800, "max_sentences": 14, "preserve_structure": True},
+                {"max_len": 1800, "max_sentences": 6, "preserve_structure": True},
             )
         return (
-            {"max_len": 700, "max_sentences": 2},
-            {"max_len": 300, "max_sentences": 1},
+            {"max_len": 700, "max_sentences": 2, "preserve_structure": False},
+            {"max_len": 300, "max_sentences": 1, "preserve_structure": False},
         )
 
-    def _condense_vane_text(self, text: str, max_len: int, max_sentences: int) -> str:
+    def _condense_vane_text(self, text: str, max_len: int, max_sentences: int, preserve_structure: bool = False) -> str:
         cleaned = re.sub(r"\s+", " ", text or "").strip()
         if not cleaned:
             return ""
 
         paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+        if preserve_structure and len(paragraphs) > 1:
+            pieces: list[str] = []
+            total_sentences = 0
+            for paragraph in paragraphs:
+                plain = re.sub(r"\s+", " ", paragraph).strip()
+                if not plain:
+                    continue
+                if len(re.sub(r"^[#*_`>\-\s]+", "", plain).strip()) < 20:
+                    continue
+                paragraph_sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", plain) if s.strip()]
+                if not paragraph_sentences:
+                    candidate = plain[:max_len].rstrip(" ,;:-")
+                else:
+                    kept: list[str] = []
+                    for sentence in paragraph_sentences:
+                        if total_sentences + len(kept) >= max_sentences:
+                            break
+                        next_text = " ".join(kept + [sentence]).strip()
+                        if len(next_text) > max_len:
+                            break
+                        kept.append(sentence)
+                    candidate = " ".join(kept).strip() if kept else paragraph_sentences[0].strip()
+                joined = "\n\n".join(pieces + [candidate]).strip()
+                if len(joined) > max_len:
+                    break
+                pieces.append(candidate)
+                total_sentences += len([s for s in re.split(r"(?<=[.!?])\s+", candidate) if s.strip()])
+                if total_sentences >= max_sentences:
+                    break
+            if pieces:
+                return "\n\n".join(pieces).strip()[:max_len].rstrip(" ,;:-")
+
         candidate = cleaned
         for paragraph in paragraphs:
             plain = re.sub(r"\s+", " ", paragraph).strip()

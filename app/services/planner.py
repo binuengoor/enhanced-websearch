@@ -25,7 +25,34 @@ class QueryPlanner:
         "can",
         "should",
         "would",
+        "does",
+        "past",
+        "year",
+        "related",
+        "most",
     }
+
+    def decompose_query(self, query: str) -> List[str]:
+        cleaned = re.sub(r"\s+", " ", query or "").strip(" ,")
+        if not cleaned:
+            return []
+
+        parts = [cleaned]
+        if "?" in cleaned:
+            parts = [part.strip(" ,") for part in re.split(r"\?+", cleaned) if part.strip(" ,")]
+        elif re.search(r",\s*(what|why|how|when|where|which|who)\b", cleaned, flags=re.I):
+            parts = [part.strip(" ,") for part in re.split(r",\s*(?=(?:what|why|how|when|where|which|who)\b)", cleaned, flags=re.I) if part.strip(" ,")]
+
+        normalized: List[str] = []
+        for part in parts:
+            candidate = part.strip(" ,")
+            if not candidate:
+                continue
+            if not candidate.endswith("?"):
+                candidate = f"{candidate}?"
+            if candidate.lower() not in {item.lower() for item in normalized}:
+                normalized.append(candidate)
+        return normalized or [cleaned]
 
     def classify_complexity(self, query: str) -> Dict[str, bool]:
         q = query.lower()
@@ -69,7 +96,12 @@ class QueryPlanner:
         return str(self.build_route_decision(requested_mode, query)["selected_mode"])
 
     def initial_plan(self, query: str, mode: str) -> List[Dict[str, str]]:
+        subquestions = self.decompose_query(query)
         plan = [{"step": "primary", "text": query, "purpose": "primary"}]
+        if mode == "research" and len(subquestions) > 1:
+            for idx, subquestion in enumerate(subquestions, start=1):
+                plan.append({"step": f"subquestion-{idx}", "text": subquestion, "purpose": "subquestion"})
+
         if mode in {"deep", "research"}:
             profile = self.classify_complexity(query)
             if profile["is_temporal"]:
@@ -89,11 +121,23 @@ class QueryPlanner:
         }
 
     def followup_query(self, query: str, seen_titles: List[str]) -> str:
+        subquestions = self.decompose_query(query)
         blob = " ".join(seen_titles).lower()
+
+        # Prefer uncovered sub-questions over token echo from the full compound query.
+        for subquestion in subquestions:
+            terms = [t for t in re.findall(r"[a-z0-9]+", subquestion.lower()) if len(t) > 3 and t not in self.STOPWORDS]
+            overlap = sum(1 for term in terms if term in blob)
+            if terms and overlap < max(1, len(terms) // 2):
+                return subquestion
+
         tokens = [t for t in re.findall(r"[a-z0-9]+", query.lower()) if len(t) > 3 and t not in self.STOPWORDS]
         missing = [t for t in tokens if t not in blob]
         if missing:
             return f"{query} {' '.join(missing[:3])}"
+
+        if len(subquestions) > 1:
+            return f"{subquestions[-1]} latest evidence"
         return f"{query} limitations tradeoffs"
 
     def quick_profile(

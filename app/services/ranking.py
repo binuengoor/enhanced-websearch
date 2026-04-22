@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any, Dict, List
 from urllib.parse import urlparse
 
@@ -82,8 +82,16 @@ class Ranker:
                 ]
             ).lower()
             terms = [term for term in re.findall(r"[a-z0-9]+", text) if len(term) > 3 and term not in query_terms]
-            key = terms[0] if terms else citation.get("source", "unknown")
+            key_terms = [term for term, count in Counter(terms).most_common(3) if count >= 2]
+            key = " ".join(key_terms[:2]) if key_terms else (terms[0] if terms else citation.get("source", "unknown"))
             grouped[key].append(citation)
 
-        clusters = sorted(grouped.values(), key=lambda items: max((item.get("relevance_score", 0.0) for item in items), default=0.0), reverse=True)
+        clusters = sorted(
+            grouped.values(),
+            key=lambda items: (
+                len(items),
+                max((item.get("relevance_score", 0.0) for item in items), default=0.0),
+            ),
+            reverse=True,
+        )
         return clusters
