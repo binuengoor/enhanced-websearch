@@ -10,6 +10,7 @@ Mode = Literal["auto", "fast", "deep", "research", "fast_fallback"]
 ExecutionMode = Literal["fast", "deep", "research", "fast_fallback"]
 SourceMode = Literal["web", "academia", "social", "all"]
 DepthMode = Literal["quick", "balanced", "quality"]
+ResearchDepthMode = Literal["balanced", "quality"]
 DecisionSource = Literal["heuristic", "llm", "override"]
 
 
@@ -61,7 +62,7 @@ class SearchRequest(BaseModel):
 class ResearchRequest(BaseModel):
     query: str = Field(min_length=1)
     source_mode: SourceMode = "web"
-    depth: DepthMode = "quality"
+    depth: ResearchDepthMode = "quality"
     max_iterations: int = Field(default=4, ge=1, le=8)
     include_debug: bool = False
     include_legacy: bool = False

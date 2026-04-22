@@ -155,9 +155,15 @@ if mcp.settings.transport_security is not None:
 
 
 async def _backend_post(ctx: Context, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-    response = await ctx.request_context.lifespan_context.client.post(path, json=payload)
-    response.raise_for_status()
-    return response.json()
+    try:
+        response = await ctx.request_context.lifespan_context.client.post(path, json=payload)
+        response.raise_for_status()
+        return response.json()
+    except httpx.TimeoutException as exc:
+        timeout_s = ctx.request_context.lifespan_context.config.request_timeout_s
+        raise RuntimeError(
+            f"backend request to {path} timed out after {timeout_s}s; increase EWS_MCP_REQUEST_TIMEOUT for long-running tools"
+        ) from exc
 
 
 async def _backend_get(ctx: Context, path: str) -> dict[str, Any]:
@@ -170,7 +176,7 @@ async def _backend_get(ctx: Context, path: str) -> dict[str, Any]:
 async def research(
     query: str,
     source_mode: Literal["web", "academia", "social", "all"] = "web",
-    depth: Literal["quick", "balanced", "quality"] = "quality",
+    depth: Literal["balanced", "quality"] = "quality",
     max_iterations: int = 4,
     include_legacy: bool = False,
     strict_runtime: bool = False,
@@ -179,8 +185,7 @@ async def research(
 ) -> dict[str, Any]:
     """Run long-form research via /research and return the rich result payload.
 
-    Prefer depth="balanced" or depth="quality". depth="quick" remains available
-    only as a compatibility alias during the depth terminology transition.
+    Use depth="balanced" or depth="quality".
     """
     payload = {
         "query": query,
