@@ -13,10 +13,12 @@ from app.models.contracts import (
     FetchRequest,
     PerplexitySearchRequest,
     ProgressEvent,
+    ResearchExportRequest,
     ResearchRequest,
     SearchRequest,
 )
 from app.services.orchestrator import ResearchOrchestrator
+from app.services.report_exporter import ReportExporter
 
 router = APIRouter()
 
@@ -37,6 +39,10 @@ def get_router_health(request: Request):
     return request.app.state.provider_router.health_snapshot
 
 
+def get_report_exporter(request: Request) -> ReportExporter:
+    return request.app.state.report_exporter
+
+
 @router.post("/")
 async def search_root(
     payload: PerplexitySearchRequest,
@@ -46,13 +52,15 @@ async def search_root(
     try:
         response = await orch.execute_perplexity_search(payload)
     except ValueError as exc:
+        query_text = payload.query if isinstance(payload.query, str) else "; ".join(payload.query)
+        orch.record_failed_run(endpoint="/search", query=query_text, mode="fast", errors=[str(exc)])
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return response.model_dump(exclude_none=True)
 
 
 @router.post("/internal/search")
 async def search(payload: SearchRequest, orch: ResearchOrchestrator = Depends(get_orchestrator)):
-    response = await orch.execute_search(payload)
+    response = await orch.execute_search(payload, endpoint="/research")
     return response.model_dump()
 
 
@@ -64,6 +72,8 @@ async def perplexity_search(
     try:
         response = await orch.execute_perplexity_search(payload)
     except ValueError as exc:
+        query_text = payload.query if isinstance(payload.query, str) else "; ".join(payload.query)
+        orch.record_failed_run(endpoint="/search", query=query_text, mode="fast", errors=[str(exc)])
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return response.model_dump(exclude_none=True)
 
@@ -89,7 +99,7 @@ async def research_search(
 
     stream_progress = request.query_params.get("stream") == "true"
     if not stream_progress:
-        response = await orch.execute_search(internal_request)
+        response = await orch.execute_search(internal_request, endpoint="/research")
         return response.model_dump()
 
     # Pre-generate request id so error events carry proper identity
@@ -103,7 +113,7 @@ async def research_search(
 
         async def run_search() -> None:
             try:
-                response = await orch.execute_search(internal_request, progress_callback=on_progress)
+                response = await orch.execute_search(internal_request, progress_callback=on_progress, endpoint="/research")
                 await queue.put({"type": "result", "payload": response.model_dump()})
             except Exception as exc:
                 await queue.put(
@@ -140,6 +150,17 @@ async def research_search(
     )
 
 
+@router.post("/research/export")
+async def export_research_report(
+    payload: ResearchExportRequest,
+    exporter: ReportExporter = Depends(get_report_exporter),
+):
+    try:
+        return exporter.export_research_report(payload.response)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.post("/fetch")
 async def fetch(payload: FetchRequest, orch: ResearchOrchestrator = Depends(get_orchestrator)):
     return await orch.fetch(payload.url)
@@ -168,3 +189,8 @@ async def effective_config(cfg=Depends(get_config)):
 @router.get("/metrics")
 async def metrics(orch: ResearchOrchestrator = Depends(get_orchestrator)):
     return orch.metrics()
+
+
+@router.get("/runs/recent")
+async def recent_runs(limit: int = 20, orch: ResearchOrchestrator = Depends(get_orchestrator)):
+    return {"runs": orch.recent_runs(limit=limit)}

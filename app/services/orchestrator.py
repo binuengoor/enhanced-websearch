@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from collections import Counter
 from typing import Any, Awaitable, Callable, Dict, List, Tuple
+
+from app.models.contracts import RunHistoryEntry
 from urllib.parse import urlparse
 
 from app.cache.memory_cache import InMemoryCache
@@ -21,6 +23,7 @@ from app.services.planner import QueryPlanner
 from app.services.ranking import Ranker
 from app.services.compiler import ResultCompiler
 from app.services.vane import VaneClient
+from app.services.run_history import RecentRunHistory
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,7 @@ class ResearchOrchestrator:
         ranker: Ranker,
         vane: VaneClient,
         compiler: ResultCompiler,
+        run_history: RecentRunHistory | None = None,
     ):
         self.config = config
         self.router = router
@@ -50,11 +54,13 @@ class ResearchOrchestrator:
         self.ranker = ranker
         self.vane = vane
         self.compiler = compiler
+        self.run_history = run_history or RecentRunHistory()
 
     async def execute_search(
         self,
         req: SearchRequest,
         progress_callback: ProgressCallback | None = None,
+        endpoint: str = "/research",
     ) -> SearchResponse:
         request_id = uuid.uuid4().hex[:8]
         started = time.perf_counter()
@@ -295,7 +301,19 @@ class ResearchOrchestrator:
             timings=payload["timings"],
         )
 
-        return SearchResponse.model_validate(payload)
+        response = SearchResponse.model_validate(payload)
+        self._record_run(
+            endpoint=endpoint,
+            query=req.query,
+            mode=selected_mode,
+            success=not bool(errors),
+            citations_count=len(response.citations),
+            sources_count=len(response.sources),
+            confidence=response.confidence,
+            warnings=warnings,
+            errors=errors,
+        )
+        return response
 
     async def execute_perplexity_search(self, req: PerplexitySearchRequest) -> PerplexitySearchResponse:
         request_id = req.trace_id or uuid.uuid4().hex[:8]
@@ -392,7 +410,7 @@ class ResearchOrchestrator:
                     "limit_override": remaining_results,
                 },
             )
-            response = await self.execute_search(internal)
+            response = await self.execute_search(internal, endpoint="/search")
             items = self._perplexity_results_from_response(response)
             if not items:
                 # Empty /search items mean upstream retrieval failed or all candidates were filtered out.
@@ -463,11 +481,39 @@ class ResearchOrchestrator:
         return result
 
     def metrics(self) -> Dict[str, Any]:
+        provider_snap = self.router.health_snapshot()
+        recent = self.run_history.list(limit=50)
         return {
             "cache_search": self.search_cache.stats(),
             "cache_page": self.page_cache.stats(),
-            "providers": len(self.router.health_snapshot()),
+            "providers": {
+                "count": len(provider_snap),
+                "healthy": [p.name for p in provider_snap if p.enabled and p.cooldown_until == 0],
+                "cooldown": [p.name for p in provider_snap if p.cooldown_until > 0],
+                "degraded": [p.name for p in provider_snap if p.consecutive_failures > 0],
+            },
+            "recent_runs": {
+                "total": len(recent),
+                "success": sum(1 for r in recent if r.success),
+                "failed": sum(1 for r in recent if not r.success),
+            },
         }
+
+    def recent_runs(self, limit: int = 20) -> List[Dict[str, Any]]:
+        return [entry.model_dump() for entry in self.run_history.list(limit)]
+
+    def record_failed_run(self, endpoint: str, query: str, mode: str, errors: List[str]) -> None:
+        self._record_run(
+            endpoint=endpoint,
+            query=query,
+            mode=mode,
+            success=False,
+            citations_count=0,
+            sources_count=0,
+            confidence=None,
+            warnings=[],
+            errors=errors,
+        )
 
     async def _search_once(
         self,
@@ -1181,6 +1227,33 @@ class ResearchOrchestrator:
 
         condensed = " ".join(pieces).strip() if pieces else sentences[0].strip()
         return condensed[:max_len].rstrip(" ,;:-")
+
+    def _record_run(
+        self,
+        endpoint: str,
+        query: str,
+        mode: str,
+        success: bool,
+        citations_count: int,
+        sources_count: int,
+        confidence: str | None,
+        warnings: List[str],
+        errors: List[str],
+    ) -> None:
+        self.run_history.append(
+            RunHistoryEntry(
+                timestamp=datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+                endpoint=endpoint,
+                query=query,
+                mode=mode,
+                success=success,
+                citations_count=citations_count,
+                sources_count=sources_count,
+                confidence=confidence,
+                warnings=warnings[:5],
+                errors=errors[:5],
+            )
+        )
 
     def _select_vane_depth(self, query: str, requested_depth: str, mode: str) -> str:
         if requested_depth == "quick":

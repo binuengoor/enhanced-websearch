@@ -170,6 +170,29 @@ class SearchResponse(BaseModel):
     legacy: Optional[Dict[str, Any]] = None
 
 
+class ResearchExportRequest(BaseModel):
+    response: SearchResponse
+
+
+class ResearchExportResponse(BaseModel):
+    id: str
+    directory: str
+    artifacts: Dict[str, str]
+
+
+class RunHistoryEntry(BaseModel):
+    timestamp: str
+    endpoint: Literal["/search", "/research"]
+    query: str
+    mode: ExecutionMode
+    success: bool
+    citations_count: int = 0
+    sources_count: int = 0
+    confidence: Optional[Literal["low", "medium", "high"]] = None
+    warnings: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+
+
 class ProgressEvent(BaseModel):
     type: Literal["progress", "complete", "error"]
     state: Literal[

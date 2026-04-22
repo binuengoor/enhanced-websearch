@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -21,8 +22,10 @@ from app.services.fetcher import PageFetcher
 from app.services.compiler import ResultCompiler
 from app.services.orchestrator import ResearchOrchestrator
 from app.services.planner import QueryPlanner
+from app.services.report_exporter import ReportExporter
 from app.services.ranking import Ranker
 from app.services.vane import VaneClient
+from app.services.run_history import RecentRunHistory
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,7 @@ class Container:
     config: AppConfig
     orchestrator: ResearchOrchestrator
     provider_router: ProviderRouter
+    report_exporter: ReportExporter
 
 
 container = Container()
@@ -103,6 +107,7 @@ def _build_orchestrator(config: AppConfig, router: ProviderRouter) -> ResearchOr
         ranker=Ranker(),
         vane=vane,
         compiler=compiler,
+        run_history=RecentRunHistory(max_entries=100),
     )
 
 
@@ -115,11 +120,15 @@ async def lifespan(app: FastAPI):
     orchestrator = _build_orchestrator(config, router)
 
     container.config = config
+    report_exporter = ReportExporter(Path(__file__).resolve().parents[1] / "artifacts" / "reports")
+
     container.provider_router = router
     container.orchestrator = orchestrator
+    container.report_exporter = report_exporter
     app.state.config = config
     app.state.provider_router = router
     app.state.orchestrator = orchestrator
+    app.state.report_exporter = report_exporter
 
     enabled_providers = [provider.name for provider in config.providers if provider.enabled]
     disabled_providers = [provider.name for provider in config.providers if not provider.enabled]

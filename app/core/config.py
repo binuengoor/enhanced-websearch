@@ -112,7 +112,7 @@ class AppConfig(BaseModel):
         return self
 
 
-_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.sample.yaml"
+_DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
 
 
 def _env(name: str, default: str = "") -> str:

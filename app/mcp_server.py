@@ -266,6 +266,12 @@ async def providers_health(ctx: Context = None) -> dict[str, Any]:
     return await _backend_get(ctx, "/providers/health")
 
 
+@mcp.tool()
+async def service_metrics(ctx: Context = None) -> dict[str, Any]:
+    """Get a canonical overview of service health: cache stats, provider status, and recent request summary. Mirrors GET /metrics."""
+    return await _backend_get(ctx, "/metrics")
+
+
 app = mcp.streamable_http_app()
 
 
