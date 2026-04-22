@@ -104,10 +104,22 @@ It is complete when the relevant test conditions pass.
 - provider rotation under rate-limit conditions
 - source diversity checks
 - free-tier exhaustion simulation where possible
+- mode-aware provider ordering checks
+- config validation for known vs unknown provider preference names
+- cooldown behavior by failure type
 
 ### Validate
 - provider strategy improves resilience
 - more providers do not degrade answer quality disproportionately
+- preferred and avoided providers are ordered correctly per mode
+- invalid provider preference declarations fail fast during config load
+- cooldown policy matches rate-limit, auth, and transient failure expectations
+- live degraded-path fallback is demonstrated with captured evidence before the milestone is closed
+
+### Latest validation note
+- targeted router/config tests passed in Docker/provisioned environments
+- live smoke validation passed for the new provider ordering path
+- degraded-path live fallback proof is still outstanding
 
 ## MP-08 - Quality gates and evaluation suite
 

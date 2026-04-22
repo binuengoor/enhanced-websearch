@@ -29,16 +29,21 @@ Wrappers should not contain their own orchestration logic.
 
 ### 3. Product shape
 
-Use three practical capability tiers:
+Use two explicit public endpoint surfaces:
 
-- `quick_search`
-- `research`
-- `deep_research`
+- `/search` for fast search
+- `/research` for long-form research
 
-Publicly:
+Publicly, the intended end-state contract is:
 
-- `/search` stays Perplexity-compatible quick search
-- `/research` supports `auto`, `research`, `deep`
+- `/search` stays Perplexity-compatible and fast
+- `/research` exposes `depth=balanced|quality`
+
+Implementation note:
+
+- current code and some existing docs still accept or describe older terms such as `quick`, `research`, and `deep`
+- that older vocabulary should be treated as transitional/internal compatibility language until the full API contract cleanup is finished
+- `plan/master-plan/05-mode-mapping.md` remains the canonical place to spell out contract details and compatibility notes
 
 ### 4. Separate raw tools from smart tools
 

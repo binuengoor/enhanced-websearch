@@ -62,28 +62,27 @@ Examples:
 
 ## Public mode structure
 
-Recommended practical modes:
+The canonical public contract is endpoint-first:
 
-- `quick_search`
-- `research`
-- `deep_research`
+- `POST /search` is the fast endpoint
+- `POST /research` is the research endpoint
 
-Mapped to HTTP:
+Public depth semantics on `/research` should converge on:
 
-- `/search` remains the Perplexity-compatible quick-search path
-- `/research` becomes the structured long-form path
+- `balanced` = default bounded long-form research
+- `quality` = highest-budget long-form research
 
-Suggested public mode semantics on `/research`:
+Interpretation:
 
-- `auto`
-- `research`
-- `deep`
+- `/search` is the concise, low-latency retrieval path
+- `/research depth=balanced` is the standard citation-bearing synthesis path
+- `/research depth=quality` is the deliberate higher-latency research path
 
-Meaning:
+Implementation note:
 
-- `auto` lets the planner choose the work level
-- `research` returns a grounded report-style answer
-- `deep` uses the strongest bounded iterative workflow
+- some current code paths and docs still reference older internal/public terminology such as `quick`, `research`, or `deep`
+- treat those as implementation-era vocabulary until the full contract cleanup is complete, not as the desired long-term public model
+- `plan/master-plan/05-mode-mapping.md` is the canonical contract/mapping file and should be updated first if semantics change again
 
 ## Core architectural rule
 

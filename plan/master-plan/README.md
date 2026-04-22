@@ -27,6 +27,7 @@ Purpose:
 - `12-test-workstreams.md` - independent testing tracks and validation scenarios
 - `13-status-tracker.md` - lightweight live status board for orchestration and completion tracking
 - `14-git-workflow.md` - local branch/commit workflow for safe parallel subagent execution
+- `29-re-entry-summary.md` - concise continuity/background note for resuming work later
 
 ## Core position
 

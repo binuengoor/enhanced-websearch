@@ -143,6 +143,59 @@ class ProviderRouterRoutedSearchTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(limited.calls), 0)
         self.assertEqual(len(healthy.calls), 1)
 
+    async def test_routed_search_falls_back_from_preferred_rate_limited_provider_to_next_preferred_provider(self):
+        searxng = DummyProvider("searxng", responses=[RateLimitError("limited", cooldown_seconds=23)])
+        brave = DummyProvider("brave-search", responses=[[{"url": "https://example.com", "title": "fallback", "snippet": "ok", "provider": "brave-search"}]])
+        exa = DummyProvider("exa", responses=[[{"url": "https://example.com/exa", "title": "later", "snippet": "ok", "provider": "exa"}]])
+        router = ProviderRouter(
+            slots=[
+                ProviderSlot(provider=searxng, weight=3, enabled=True),
+                ProviderSlot(provider=brave, weight=1, enabled=True),
+                ProviderSlot(provider=exa, weight=1, enabled=True),
+            ],
+            cooldown_seconds=10,
+            failure_threshold=2,
+            provider_preferences={"fast": {"prefer": ["searxng", "brave-search"], "avoid": ["exa"]}},
+        )
+
+        rows, trace = await router.routed_search("test query", {"request_id": "r4", "mode": "fast"}, max_attempts=2)
+        health = {rec.name: rec for rec in router.health_snapshot()}
+
+        self.assertEqual(rows[0]["provider"], "brave-search")
+        self.assertEqual([entry["provider"] for entry in trace], ["searxng", "brave-search"])
+        self.assertEqual(trace[0]["status"], "rate_limit")
+        self.assertEqual(trace[0]["cooldown_seconds"], 23)
+        self.assertEqual(trace[1]["status"], "success")
+        self.assertEqual(health["searxng"].last_failure_type, "rate_limit")
+        self.assertEqual(health["searxng"].last_cooldown_seconds, 23)
+        self.assertEqual(len(exa.calls), 0)
+
+    async def test_routed_search_skips_auth_cooled_preferred_provider_and_keeps_mode_ordering(self):
+        exa = DummyProvider("exa")
+        tavily = DummyProvider("tavily", responses=[[{"url": "https://example.com/tavily", "title": "fallback", "snippet": "ok", "provider": "tavily"}]])
+        searxng = DummyProvider("searxng", responses=[[{"url": "https://example.com/searxng", "title": "later", "snippet": "ok", "provider": "searxng"}]])
+        router = ProviderRouter(
+            slots=[
+                ProviderSlot(provider=exa, weight=1, enabled=True),
+                ProviderSlot(provider=tavily, weight=1, enabled=True),
+                ProviderSlot(provider=searxng, weight=3, enabled=True),
+            ],
+            cooldown_seconds=10,
+            failure_threshold=2,
+            provider_preferences={"deep": {"prefer": ["exa", "tavily", "searxng"], "avoid": []}},
+        )
+        router._mark_failure("exa", AuthProviderError("bad auth"))
+
+        rows, trace = await router.routed_search("test query", {"request_id": "r5", "mode": "deep"}, max_attempts=1)
+
+        self.assertEqual(rows[0]["provider"], "tavily")
+        self.assertEqual([entry["provider"] for entry in trace], ["exa", "tavily"])
+        self.assertEqual(trace[0]["status"], "skipped_cooldown")
+        self.assertEqual(trace[1]["attempt"], 1)
+        self.assertEqual(len(exa.calls), 0)
+        self.assertEqual(len(tavily.calls), 1)
+        self.assertEqual(len(searxng.calls), 0)
+
     def test_pick_order_prioritizes_preferred_and_deprioritizes_avoided_for_mode(self):
         alpha = DummyProvider("alpha")
         beta = DummyProvider("beta")
