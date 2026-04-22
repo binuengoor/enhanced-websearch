@@ -21,10 +21,11 @@ class ProviderSlot:
 
 
 class ProviderRouter:
-    def __init__(self, slots: List[ProviderSlot], cooldown_seconds: int, failure_threshold: int):
+    def __init__(self, slots: List[ProviderSlot], cooldown_seconds: int, failure_threshold: int, provider_preferences: Dict[str, Dict[str, List[str]]] | None = None):
         self._slots = slots
         self._cooldown_seconds = cooldown_seconds
         self._failure_threshold = max(1, failure_threshold)
+        self._provider_preferences = provider_preferences or {}
         self._cursor = 0
         self._lock = Lock()
         self._health: Dict[str, ProviderHealthRecord] = {
@@ -38,7 +39,7 @@ class ProviderRouter:
     def _is_ready(self, rec: ProviderHealthRecord) -> bool:
         return rec.enabled and rec.cooldown_until <= time.time()
 
-    def _pick_order(self) -> List[ProviderSlot]:
+    def _pick_order(self, mode: str | None = None) -> List[ProviderSlot]:
         with self._lock:
             weighted: List[ProviderSlot] = []
             for slot in self._slots:
@@ -50,8 +51,6 @@ class ProviderRouter:
             self._cursor += 1
             rotated = weighted[pivot:] + weighted[:pivot]
 
-            # Keep weighted preference but avoid trying the same provider
-            # multiple times in a single routed_search call.
             unique_order: List[ProviderSlot] = []
             seen: set[str] = set()
             for slot in rotated:
@@ -60,7 +59,16 @@ class ProviderRouter:
                     continue
                 seen.add(name)
                 unique_order.append(slot)
-            return unique_order
+
+            if not mode:
+                return unique_order
+
+            preferred_names = set((self._provider_preferences.get(mode, {}) or {}).get("prefer", []))
+            avoided_names = set((self._provider_preferences.get(mode, {}) or {}).get("avoid", []))
+            preferred = [slot for slot in unique_order if slot.provider.name in preferred_names]
+            neutral = [slot for slot in unique_order if slot.provider.name not in preferred_names and slot.provider.name not in avoided_names]
+            avoided = [slot for slot in unique_order if slot.provider.name in avoided_names]
+            return preferred + neutral + avoided
 
     def _mark_success(self, name: str) -> None:
         rec = self._health[name]
@@ -103,7 +111,8 @@ class ProviderRouter:
             len(self._slots),
         )
 
-        for slot in self._pick_order():
+        mode = options.get("mode")
+        for slot in self._pick_order(mode=mode):
             if attempts >= max_attempts:
                 break
 

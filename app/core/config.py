@@ -27,6 +27,11 @@ class RoutingConfig(BaseModel):
     failure_threshold: int = 2
 
 
+class ProviderPreferenceConfig(BaseModel):
+    prefer: List[str] = Field(default_factory=list)
+    avoid: List[str] = Field(default_factory=list)
+
+
 class ProviderEntry(BaseModel):
     name: str
     kind: str
@@ -84,6 +89,7 @@ class LoggingConfig(BaseModel):
 class AppConfig(BaseModel):
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    provider_preferences: Dict[str, ProviderPreferenceConfig] = Field(default_factory=dict)
     modes: Dict[str, ModeBudget]
     providers: List[ProviderEntry]
     cache: CacheConfig = Field(default_factory=CacheConfig)
