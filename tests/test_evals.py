@@ -71,6 +71,9 @@ class DisabledCompiler(ResultCompiler):
 def load_eval_fixtures() -> List[Dict[str, Any]]:
     fixtures = []
     for path in sorted(FIXTURE_DIR.glob("*.json")):
+        # Skip baseline/comparison artifacts that are not scenario fixtures.
+        if "baseline" in path.stem:
+            continue
         fixture = json.loads(path.read_text(encoding="utf-8"))
         # Normalise two known schemas into a canonical shape:
         # - fixture-generator schema: {scenario, query, category, ...}
