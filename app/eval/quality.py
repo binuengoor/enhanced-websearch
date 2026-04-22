@@ -9,6 +9,15 @@ _MIN_CITATIONS = 3
 _MIN_SOURCES = 3
 _MIN_FINDINGS = 2
 
+# Known limitation (tracked in MP-08 review):
+# These thresholds are unconditionally strict for all response shapes.
+# The plan allows sparse-evidence cases with 2 citations and says /search
+# checks may be lighter, but this helper enforces >=3 for everything.
+# This can force acceptable sparse/uncertain research into fallback, and
+# misclassify concise /search-style outputs as unusable.
+# Fix: make _MIN_CITATIONS and _MIN_SOURCES configurable per mode/scenario
+# via an optional override dict when this becomes a production bottleneck.
+
 
 def _payload_dict(payload: SearchResponse | Mapping[str, Any] | dict[str, Any]) -> dict[str, Any]:
     if isinstance(payload, SearchResponse):
