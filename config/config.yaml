@@ -8,6 +8,17 @@ routing:
   cooldown_seconds: 90
   failure_threshold: 2
 
+provider_preferences:
+  fast:
+    prefer: [searxng, brave-search, serper]
+    avoid: [firecrawl, linkup]
+  research:
+    prefer: [searxng, exa, tavily, firecrawl, linkup]
+    avoid: []
+  deep:
+    prefer: [exa, tavily, firecrawl, linkup, searxng]
+    avoid: [brave-search]
+
 modes:
   fast:
     max_provider_attempts: 2
@@ -36,8 +47,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/brave-search
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: brave-search
 
   - name: serper
     kind: litellm-search
@@ -45,8 +55,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/serper
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: serper
 
   - name: exa
     kind: litellm-search
@@ -54,8 +63,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/exa
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: exa
 
   - name: tavily
     kind: litellm-search
@@ -63,8 +71,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/tavily
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: tavily
 
   - name: firecrawl
     kind: litellm-search
@@ -72,8 +79,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/firecrawl
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: firecrawl
 
   - name: linkup
     kind: litellm-search
@@ -81,8 +87,7 @@ providers:
     weight: 1
     timeout_s: 12
     base_url: ${LITELLM_SEARCH_BASE_URL}
-    path: /search/linkup
-    api_key_env: LITELLM_API_KEY
+    litellm_provider: linkup
 
 cache:
   enabled: true

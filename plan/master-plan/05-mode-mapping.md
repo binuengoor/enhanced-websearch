@@ -47,7 +47,13 @@ Public behavior:
 Accepted public knobs on `/research`:
 
 - `source_mode`: `web|academia|social|all`
-- `depth`: `quick|balanced|quality`
+- intended end-state `depth`: `balanced|quality`
+
+Compatibility note:
+
+- current implementation and some client/docs still reference `depth=quick`
+- keep documenting that as compatibility/transitional behavior until the code and all public-facing docs are fully aligned
+- do not treat `quick` as part of the desired long-term public contract
 
 ### `POST /internal/search`
 
@@ -83,15 +89,16 @@ Interpretation:
 
 | Public surface | Public value | Internal backend meaning | Notes |
 |---|---|---|---|
-| `/research` | `depth=quick` | `mode=research` with low-budget research execution | still long-form research, just lighter |
 | `/research` | `depth=balanced` | `mode=research` with default research budget | default long-form research profile |
 | `/research` | `depth=quality` | `mode=deep` or equivalent highest-budget research execution | reserved for deliberate high-latency work |
+| `/research` | `depth=quick` | compatibility/transitional mapping only | accepted today in parts of the implementation/docs, but not part of the intended end-state public contract |
 
 Interpretation:
 
-- public `depth` is the stable external vocabulary for long-form research
+- public `depth` should converge on `balanced|quality` as the stable external vocabulary for long-form research
 - internal `mode` is orchestration vocabulary, not a public compatibility promise
 - `quality` is the only public depth that should map to the highest-budget deep-research behavior
+- `quick` should be treated as a temporary compatibility term rather than a target public contract value
 
 ## Internal mode semantics
 
@@ -160,11 +167,15 @@ Canonical operating rule:
 
 Freeze the product contract as:
 
-- `/search` = concise quick-search only
-- `/research depth=quick` = lighter long-form research
+- `/search` = concise fast-search only
 - `/research depth=balanced` = default long-form research
-- `/research depth=quality` = deliberate deep research
+- `/research depth=quality` = deliberate highest-budget research
 - `/internal/search mode=fast|research|deep` = backend control plane vocabulary
+
+Compatibility note:
+
+- if the current implementation still accepts `/research depth=quick`, document that as transitional compatibility only
+- do not present `quick` as part of the intended end-state public contract
 
 ## Non-goal for this file
 

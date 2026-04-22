@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ServiceConfig(BaseModel):
@@ -27,6 +27,11 @@ class RoutingConfig(BaseModel):
     failure_threshold: int = 2
 
 
+class ProviderPreferenceConfig(BaseModel):
+    prefer: List[str] = Field(default_factory=list)
+    avoid: List[str] = Field(default_factory=list)
+
+
 class ProviderEntry(BaseModel):
     name: str
     kind: str
@@ -36,6 +41,7 @@ class ProviderEntry(BaseModel):
     base_url: str = ""
     path: str = ""
     api_key_env: Optional[str] = None
+    litellm_provider: Optional[str] = None
 
 
 class CacheConfig(BaseModel):
@@ -84,6 +90,7 @@ class LoggingConfig(BaseModel):
 class AppConfig(BaseModel):
     service: ServiceConfig = Field(default_factory=ServiceConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    provider_preferences: Dict[str, ProviderPreferenceConfig] = Field(default_factory=dict)
     modes: Dict[str, ModeBudget]
     providers: List[ProviderEntry]
     cache: CacheConfig = Field(default_factory=CacheConfig)
@@ -92,6 +99,17 @@ class AppConfig(BaseModel):
     compiler: CompilerConfig = Field(default_factory=CompilerConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
+
+    @model_validator(mode="after")
+    def validate_provider_preferences(self) -> "AppConfig":
+        known_provider_names = {provider.name for provider in self.providers}
+        for mode, prefs in self.provider_preferences.items():
+            unknown_names = sorted((set(prefs.prefer) | set(prefs.avoid)) - known_provider_names)
+            if unknown_names:
+                raise ValueError(
+                    f"provider_preferences[{mode}] references unknown providers: {', '.join(unknown_names)}"
+                )
+        return self
 
 
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.sample.yaml"
@@ -194,7 +212,9 @@ def _apply_env_overrides(payload: dict) -> dict:
         explicit_enabled = _env_bool_optional(_provider_env_flag_name(name))
 
         if provider.get("kind") == "litellm-search":
-            provider["api_key_env"] = shared_litellm_key_env
+            provider["api_key_env"] = provider.get("api_key_env") or shared_litellm_key_env
+            if not provider.get("path") and provider.get("litellm_provider"):
+                provider["path"] = f"/search/{provider['litellm_provider']}"
 
         if explicit_enabled is not None:
             provider["enabled"] = explicit_enabled

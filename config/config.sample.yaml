@@ -8,6 +8,18 @@ routing:
   cooldown_seconds: 90
   failure_threshold: 2
 
+provider_preferences:
+  # Minimal example; operators can set per-mode policies for fast, research, and deep.
+  fast:
+    prefer: [brave-search]
+    avoid: []
+  research:
+    prefer: [exa]
+    avoid: [searxng]
+  deep:
+    prefer: [exa, tavily]
+    avoid: [brave-search]
+
 modes:
   fast:
     max_provider_attempts: 2

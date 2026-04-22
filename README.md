@@ -31,6 +31,28 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 - config/config.sample.yaml: template you can copy from
 - docker-compose.yml: single publishable service + optional dependencies
 
+## Adding LiteLLM-backed providers
+
+If LiteLLM already exposes a search backend behind the same normalized `/search/<provider>` contract, you can add a new provider without changing Python code.
+
+Add a provider entry like this to `config/config.yaml`:
+
+```yaml
+- name: jina-search
+  kind: litellm-search
+  enabled: true
+  weight: 1
+  timeout_s: 12
+  base_url: ${LITELLM_SEARCH_BASE_URL}
+  litellm_provider: jina-search
+```
+
+Notes:
+- `litellm_provider` auto-expands to `path: /search/<litellm_provider>` during config load.
+- `api_key_env` defaults to `LITELLM_API_KEY` for `litellm-search` providers unless explicitly overridden.
+- You can still set `path` manually if a provider needs a nonstandard LiteLLM route.
+- If a provider is not exposed through the existing LiteLLM search shape, it still needs a new adapter in `app/providers/`.
+
 ## API
 
 ### POST /search
@@ -93,6 +115,12 @@ Request body:
   "strict_runtime": false,
   "user_context": {}
 }
+
+Compatibility note:
+
+- intended public depth vocabulary is `balanced|quality`
+- `depth=quick` is still accepted today for compatibility and transitional clients
+- internal execution still uses backend orchestration modes (`fast|research|deep`) behind the public endpoint
 
 Response returns the full structured research object (`SearchResponse`):
 
@@ -175,7 +203,7 @@ Available tools:
 Tool guidance:
 
 - `search` is the concise search path with only the few useful knobs kept (`max_results`, `display_server_time`, `search_mode`, `search_recency_filter`, `search_recency_amount`, `country`). `search_mode` accepts `auto`, `web`, `academic`, or `sec`; `search_recency_filter` accepts `none`, `hour`, `day`, `week`, `month`, or `year`; `search_recency_amount` (default `1`) lets you request multi-unit windows such as `3` + `month`.
-- `research` is the explicit long-form research path with only the needed research knobs (`source_mode`, `depth`, `max_iterations`, `include_legacy`, `strict_runtime`, `include_debug`). `source_mode` accepts `web`, `academia`, `social`, or `all`; `depth` accepts `quick`, `balanced`, or `quality`.
+- `research` is the explicit long-form research path with only the needed research knobs (`source_mode`, `depth`, `max_iterations`, `include_legacy`, `strict_runtime`, `include_debug`). `source_mode` accepts `web`, `academia`, `social`, or `all`; `depth` currently accepts `quick`, `balanced`, or `quality`, but `quick` should be treated as compatibility-only rather than the intended long-term public contract.
 - `fetch_page` and `extract_page_structure` are for page-level inspection and debugging.
 - `health_check` and `providers_health` are for operational checks.
 
@@ -289,6 +317,7 @@ YAML sections:
 
 - service
 - routing
+- provider_preferences
 - modes
 - providers
 - cache
@@ -296,6 +325,21 @@ YAML sections:
 - vane
 - planner
 - logging
+
+Provider preferences let you bias routing per mode without changing provider weights:
+
+```yaml
+provider_preferences:
+  research:
+    prefer: [exa]
+    avoid: [searxng]
+```
+
+Notes:
+- `prefer` providers are tried before neutral providers for that mode.
+- `avoid` providers are still eligible, but moved to the back of the mode-specific order.
+- Preferences preserve the router's normal weighted rotation within each group.
+- Config load now fails fast if a preferred or avoided provider name does not match a configured provider.
 
 ## Run
 
@@ -358,13 +402,14 @@ Behavior:
 - Answer directly for simple, stable questions.
 - Use `concise_search` for quick factual lookups and lightweight comparisons.
 - Use `research_search` for broad, technical, evaluative, or source-sensitive questions.
+- Treat `balanced` as the normal public research depth; reserve `quality` for deliberate higher-latency work.
 - Use `fetch_page` / `extract_page_structure` only for targeted verification.
 - Stop when answer quality is sufficient.
 
 Escalation:
 - Start with the lightest useful path.
 - Escalate only when needed: `concise_search` -> `research_search`.
-- In `research_search`, escalate depth only as needed: `quick` -> `balanced` -> `quality`.
+- In `research_search`, escalate depth only as needed. Prefer `balanced` first; use `quick` only when maintaining compatibility with older clients/prompts; escalate to `quality` for clearly harder requests.
 
 `concise_search` knobs:
 - `search_mode`: `auto|web|academic|sec`

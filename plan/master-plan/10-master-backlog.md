@@ -24,7 +24,9 @@ A backlog item is only `done` when:
 Freeze the public and internal semantics before implementation begins.
 
 **Includes:**
-- public `/search` and `/research` semantics
+- public `/search` fast-endpoint semantics
+- public `/research` research-endpoint semantics
+- intended end-state `/research depth=balanced|quality` contract
 - internal mode mapping
 - `/search` non-goals
 - wrapper diagnosis artifact
@@ -155,7 +157,7 @@ Make the wrapper thin, stable, and aligned with backend semantics.
 
 ## MP-07 - Provider expansion and hardening
 
-**Status:** todo
+**Status:** in_progress
 
 **Purpose:**
 Improve breadth and resilience of provider behavior.
@@ -164,12 +166,26 @@ Improve breadth and resilience of provider behavior.
 - provider specialization by mode
 - optional provider additions
 - stronger cooldown/fallback logic
+- config validation that keeps provider preference ordering honest
 
 **Dependencies:** MP-01
+
+**Implementation progress:**
+- mode-aware provider preference ordering is implemented in the router
+- cooldown behavior now varies by failure type instead of treating all provider failures the same
+- LiteLLM-backed provider onboarding is simplified via `litellm_provider` auto-path expansion
+- config validation now rejects provider preferences that reference unknown provider names
+- router/config unit coverage was added for preference ordering, cooldown policy, and validation failures
+- Docker/provisioned-environment validation passed for the targeted router/config test coverage
+- live smoke validation passed for the new provider ordering path
+- degraded-path live fallback proof is still missing, so milestone acceptance is not yet fully demonstrated
+- terminology/contract cleanup is documenting the intended end-state public model, but current implementation still exposes older `quick|balanced|quality` research depth terminology in code and some docs
 
 **Done criteria:**
 - source diversity improves without destabilizing the system
 - free-tier exhaustion pressure is reduced
+- provider preference config stays consistent with declared providers
+- live validation confirms the new ordering and cooldown behavior improve resilience under real provider failures
 
 ## MP-08 - Quality gates and evaluation suite
 

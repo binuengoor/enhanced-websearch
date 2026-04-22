@@ -135,15 +135,32 @@ This file translates backlog items into development-focused work packages suitab
 - optionally add/enable missing providers
 - tune failure handling and rotation weights
 - document provider behavior assumptions
+- validate provider preference config against declared providers
+
+### Current implementation status
+- mode-aware provider preferences are wired into the router
+- failure handling now distinguishes rate-limit, auth, and transient cooldown behavior
+- LiteLLM-backed providers are easier to add through config-only `litellm_provider` entries
+- provider preference names are now validated during config load
 
 ### Likely files
 - `config/config.yaml`
+- `config/config.sample.yaml`
+- `app/core/config.py`
 - `app/providers/*`
 - `app/providers/router.py`
+- `tests/test_provider_router.py`
+- `tests/test_config_provider_preferences.py`
 
-### Risks
-- more providers increasing noise instead of quality
-- free-tier exhaustion shifting rather than improving
+### Remaining risks
+- more providers may still increase noise instead of quality in live runs
+- free-tier exhaustion may shift to newly preferred providers rather than truly improving
+- degraded-path live fallback behavior still lacks captured proof, so the milestone should not be treated as closed yet
+
+### Latest validation note
+- targeted router/config tests passed in Docker/provisioned environments
+- live smoke validation passed for the new provider ordering path
+- live degraded-path fallback evidence is still missing, leaving the final resilience claim only partially validated
 
 ## MP-08 - Quality gates and evaluation suite
 
