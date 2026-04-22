@@ -31,6 +31,28 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 - config/config.sample.yaml: template you can copy from
 - docker-compose.yml: single publishable service + optional dependencies
 
+## Adding LiteLLM-backed providers
+
+If LiteLLM already exposes a search backend behind the same normalized `/search/<provider>` contract, you can add a new provider without changing Python code.
+
+Add a provider entry like this to `config/config.yaml`:
+
+```yaml
+- name: jina-search
+  kind: litellm-search
+  enabled: true
+  weight: 1
+  timeout_s: 12
+  base_url: ${LITELLM_SEARCH_BASE_URL}
+  litellm_provider: jina-search
+```
+
+Notes:
+- `litellm_provider` auto-expands to `path: /search/<litellm_provider>` during config load.
+- `api_key_env` defaults to `LITELLM_API_KEY` for `litellm-search` providers unless explicitly overridden.
+- You can still set `path` manually if a provider needs a nonstandard LiteLLM route.
+- If a provider is not exposed through the existing LiteLLM search shape, it still needs a new adapter in `app/providers/`.
+
 ## API
 
 ### POST /search

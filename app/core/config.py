@@ -41,6 +41,7 @@ class ProviderEntry(BaseModel):
     base_url: str = ""
     path: str = ""
     api_key_env: Optional[str] = None
+    litellm_provider: Optional[str] = None
 
 
 class CacheConfig(BaseModel):
@@ -200,7 +201,9 @@ def _apply_env_overrides(payload: dict) -> dict:
         explicit_enabled = _env_bool_optional(_provider_env_flag_name(name))
 
         if provider.get("kind") == "litellm-search":
-            provider["api_key_env"] = shared_litellm_key_env
+            provider["api_key_env"] = provider.get("api_key_env") or shared_litellm_key_env
+            if not provider.get("path") and provider.get("litellm_provider"):
+                provider["path"] = f"/search/{provider['litellm_provider']}"
 
         if explicit_enabled is not None:
             provider["enabled"] = explicit_enabled
