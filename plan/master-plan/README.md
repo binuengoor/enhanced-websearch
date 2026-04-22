@@ -28,6 +28,7 @@ Purpose:
 - `13-status-tracker.md` - lightweight live status board for orchestration and completion tracking
 - `14-git-workflow.md` - local branch/commit workflow for safe parallel subagent execution
 - `29-re-entry-summary.md` - concise continuity/background note for resuming work later
+- `30-mp-08-quality-gates-test-plan.md` - initial MP-08 benchmark, fixture, and quality-gate plan
 
 ## Core position
 

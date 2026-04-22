@@ -23,7 +23,7 @@ A milestone should only move to `done` after:
 | MP-05 Progress streaming | done | complete | pass | merged to main; SSE streaming, ProgressEvent schema, stage transitions, duplicate-start fix, request_id in error events |
 | MP-06 Open WebUI wrapper repair | done | complete | pass | merged to main; recency multi-unit fix, dict returns, SSE progress mapping, thin-wrapper preserved |
 | MP-07 Provider expansion and hardening | done | complete | pass | branch `mp-07-provider-hardening`; mode-aware provider preferences, failure-type cooldown, LiteLLM onboarding, and config validation implemented; targeted router/config tests passed in provisioned environments; live fallback validated with two concrete cases: (1) disabled searxng causes graceful fast-mode fallback to brave-search, (2) forced transient timeout on searxng triggers threshold-based cooldown at consecutive_failures=2 and successful fallback; remaining non-blocking follow-up documented below |
-| MP-08 Quality gates and evaluation suite | todo | not started | not started | |
+| MP-08 Quality gates and evaluation suite | todo | planning ready | planning ready | initial test-plan artifact added in `plan/master-plan/30-mp-08-quality-gates-test-plan.md`; implementation not started |
 | MP-09 Optional product enhancements | todo | not started | not started | |
 
 ## Suggested use with subagents
