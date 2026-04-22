@@ -1,0 +1,20 @@
+{
+  "id": "factual_rfc_http3_lookup",
+  "category": "factual lookup",
+  "query": "Which RFC defines HTTP/3?",
+  "endpoint": "/search",
+  "depth": "quick",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "wrong_rfc_number",
+    "too_few_citations",
+    "restates_question"
+  ],
+  "good_enough_criteria": [
+    "Names the RFC number directly",
+    "Includes at least 2 citations",
+    "Direct answer is concise and query-specific"
+  ],
+  "baseline_response_snippet": "HTTP/3 is defined in RFC 9114.",
+  "scenario": "strong_search"
+}

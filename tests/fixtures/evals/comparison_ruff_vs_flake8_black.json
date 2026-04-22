@@ -1,0 +1,20 @@
+{
+  "id": "comparison_ruff_vs_flake8_black",
+  "category": "comparison",
+  "query": "Ruff vs Flake8 plus Black for a medium Python team: what changes operationally?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "generic_tooling_comparison",
+    "no_operational_detail",
+    "too_few_citations"
+  ],
+  "good_enough_criteria": [
+    "Mentions workflow or tooling consolidation",
+    "Includes at least 3 citations",
+    "Uses concrete team-level differences rather than generic pros/cons"
+  ],
+  "baseline_response_snippet": "Ruff can replace several linting and formatting steps, reducing toolchain overhead for many teams.",
+  "scenario": "strong_research"
+}

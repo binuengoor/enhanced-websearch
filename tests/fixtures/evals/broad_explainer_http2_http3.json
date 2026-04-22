@@ -1,0 +1,20 @@
+{
+  "id": "broad_explainer_http2_http3",
+  "category": "broad explainer",
+  "query": "Why does HTTP/3 change transport behavior compared with HTTP/2?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "transport_confusion",
+    "generic_protocol_summary",
+    "missing_citations"
+  ],
+  "good_enough_criteria": [
+    "Mentions QUIC or transport-level difference",
+    "Includes at least 3 citations",
+    "Explains consequences, not just definitions"
+  ],
+  "baseline_response_snippet": "HTTP/3 moves to QUIC over UDP, which changes connection setup and head-of-line blocking behavior.",
+  "scenario": "strong_research"
+}

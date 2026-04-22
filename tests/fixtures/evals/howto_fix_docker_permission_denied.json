@@ -1,0 +1,20 @@
+{
+  "id": "howto_fix_docker_permission_denied",
+  "category": "technical how-to",
+  "query": "How do I fix \"permission denied\" when running Docker as a non-root user on Linux?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "unsafe_advice",
+    "missing_group_membership_step",
+    "thin_answer"
+  ],
+  "good_enough_criteria": [
+    "Mentions Docker group or equivalent access fix",
+    "Includes at least 3 citations",
+    "Avoids hand-wavy advice"
+  ],
+  "baseline_response_snippet": "A common fix is adding the user to the docker group and starting a new login session.",
+  "scenario": "strong_research"
+}

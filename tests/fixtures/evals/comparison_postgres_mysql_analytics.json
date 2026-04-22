@@ -1,0 +1,20 @@
+{
+  "id": "comparison_postgres_mysql_analytics",
+  "category": "comparison",
+  "query": "Compare PostgreSQL vs MySQL for analytics-heavy internal dashboards.",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "symmetric_pros_cons",
+    "missing_tradeoffs",
+    "thin_research_answer"
+  ],
+  "good_enough_criteria": [
+    "Highlights workload-specific tradeoffs",
+    "Includes at least 3 citations",
+    "Presents more than one grounded finding"
+  ],
+  "baseline_response_snippet": "PostgreSQL usually fits analytics-heavy dashboards better because of richer SQL features and extensions.",
+  "scenario": "strong_research"
+}

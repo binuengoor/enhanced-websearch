@@ -1,0 +1,18 @@
+{
+  "id": "negative_generic_vector_db_answer",
+  "category": "negative fixture",
+  "query": "Which vector database should a small team pick for a new semantic search prototype?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "too_few_citations",
+    "low_confidence",
+    "generic_answer"
+  ],
+  "good_enough_criteria": [
+    "This fixture is intentionally weak and should fail at least one gate"
+  ],
+  "baseline_response_snippet": "It depends on your needs and budget.",
+  "scenario": "negative_generic"
+}

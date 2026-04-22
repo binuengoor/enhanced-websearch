@@ -1,0 +1,20 @@
+{
+  "id": "contradiction_remote_work_productivity",
+  "category": "contradiction-heavy",
+  "query": "Does remote work improve productivity? Summarize the evidence and disagreements.",
+  "endpoint": "/research",
+  "depth": "quality",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "false_certainty",
+    "ignores_disagreement",
+    "cherry_picks_one_side"
+  ],
+  "good_enough_criteria": [
+    "Acknowledges disagreement explicitly",
+    "Includes at least 3 citations",
+    "Avoids absolute conclusion"
+  ],
+  "baseline_response_snippet": "The evidence is mixed: some studies show gains, while others find role- and context-specific tradeoffs.",
+  "scenario": "contradiction_research"
+}

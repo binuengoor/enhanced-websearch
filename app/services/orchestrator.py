@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 
 from app.cache.memory_cache import InMemoryCache
 from app.core.config import AppConfig
+from app.eval.quality import looks_useful_search_response
 from app.models.contracts import PerplexitySearchRequest, PerplexitySearchResponse, PerplexitySearchResult
 from app.models.contracts import ProgressEvent, ResearchPlan, RoutingDecision, SearchDiagnostics, SearchRequest, SearchResponse
 from app.providers.router import ProviderRouter
@@ -585,24 +586,7 @@ class ResearchOrchestrator:
         return payload
 
     def _looks_useful(self, payload: Dict[str, Any]) -> bool:
-        citations = payload.get("citations", []) or []
-        sources = payload.get("sources", []) or []
-        findings = payload.get("findings", []) or []
-        direct_answer = str(payload.get("direct_answer", "")).strip()
-        summary = str(payload.get("summary", "")).strip()
-        confidence = str(payload.get("confidence", "")).strip().lower()
-        diagnostics = payload.get("diagnostics", {}) if isinstance(payload.get("diagnostics", {}), dict) else {}
-        errors = diagnostics.get("errors", []) if isinstance(diagnostics, dict) else []
-
-        if errors:
-            return False
-        if len(citations) < 3 or len(sources) < 3 or len(findings) < 2:
-            return False
-        if not direct_answer or not summary:
-            return False
-        if confidence == "low":
-            return False
-        return True
+        return looks_useful_search_response(payload)
 
     def _suggest_fallback_query(self, query: str, payload: Dict[str, Any]) -> str:
         vet_hint = str(payload.get("direct_answer", "")).strip()

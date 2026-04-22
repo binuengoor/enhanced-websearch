@@ -1,0 +1,20 @@
+{
+  "id": "factual_python_release_date",
+  "category": "factual lookup",
+  "query": "When was Python 3.12.0 released?",
+  "endpoint": "/search",
+  "depth": "quick",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "missing_release_date",
+    "too_few_citations",
+    "generic_answer"
+  ],
+  "good_enough_criteria": [
+    "States the release month/year or exact date",
+    "Includes at least 2 citations",
+    "Avoids diagnostic errors"
+  ],
+  "baseline_response_snippet": "Python 3.12.0 was released in October 2023.",
+  "scenario": "strong_search"
+}

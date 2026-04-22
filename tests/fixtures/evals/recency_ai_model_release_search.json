@@ -1,0 +1,20 @@
+{
+  "id": "recency_ai_model_release_search",
+  "category": "recency-sensitive",
+  "query": "What changed in the latest OpenAI model release this month?",
+  "endpoint": "/search",
+  "depth": "quick",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "stale_summary",
+    "no_freshness_caveat",
+    "too_few_citations"
+  ],
+  "good_enough_criteria": [
+    "Uses recent-source framing or caveat",
+    "Includes at least 2 citations",
+    "Avoids sounding definitive when evidence is thin"
+  ],
+  "baseline_response_snippet": "Recent release notes emphasize model updates, but exact changes depend on the latest published announcement.",
+  "scenario": "recency_search"
+}

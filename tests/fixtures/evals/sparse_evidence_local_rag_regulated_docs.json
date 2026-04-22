@@ -1,0 +1,20 @@
+{
+  "id": "sparse_evidence_local_rag_regulated_docs",
+  "category": "sparse-evidence",
+  "query": "Are there strong public benchmarks for local-first RAG on regulated internal document sets?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "pretends_benchmarks_are_abundant",
+    "unsupported_confidence",
+    "generic_summary"
+  ],
+  "good_enough_criteria": [
+    "Notes that public evidence may be limited",
+    "Includes at least 2 citations",
+    "Avoids absolute claims"
+  ],
+  "baseline_response_snippet": "Public benchmarks in this niche are limited, so a careful answer should say so.",
+  "scenario": "sparse_research"
+}

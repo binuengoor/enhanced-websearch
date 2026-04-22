@@ -1,0 +1,20 @@
+{
+  "id": "howto_systemd_gunicorn_django",
+  "category": "technical how-to",
+  "query": "How do I run Django with Gunicorn under systemd and restart cleanly after deploys?",
+  "endpoint": "/research",
+  "depth": "quality",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "missing_steps",
+    "too_generic",
+    "too_few_citations"
+  ],
+  "good_enough_criteria": [
+    "Includes operational steps or config detail",
+    "Includes at least 3 citations",
+    "Direct answer sounds actionable"
+  ],
+  "baseline_response_snippet": "Use a dedicated systemd service for Gunicorn, then reload systemd and restart the service after deploys.",
+  "scenario": "strong_research"
+}

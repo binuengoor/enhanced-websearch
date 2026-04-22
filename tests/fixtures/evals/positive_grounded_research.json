@@ -1,0 +1,99 @@
+{
+  "name": "positive_grounded_research",
+  "expected_pass": true,
+  "expected_failed_gates": [],
+  "request": {
+    "query": "Compare Docker Compose and Kubernetes for a small self-hosted stack",
+    "mode": "research",
+    "source_mode": "web",
+    "depth": "quality",
+    "max_iterations": 2,
+    "include_citations": true,
+    "include_debug": false,
+    "include_legacy": false,
+    "strict_runtime": false,
+    "user_context": {}
+  },
+  "provider_rows": [
+    {
+      "url": "https://docs.docker.com/compose/intro/features-uses/",
+      "title": "Docker Compose features and use cases",
+      "snippet": "Docker Compose targets multi-container local and small-scale deployments with a single declarative file.",
+      "provider": "fixture",
+      "rank": 1
+    },
+    {
+      "url": "https://kubernetes.io/docs/concepts/overview/",
+      "title": "Kubernetes overview",
+      "snippet": "Kubernetes automates deployment, scaling, and recovery for containerized workloads across clusters.",
+      "provider": "fixture",
+      "rank": 2
+    },
+    {
+      "url": "https://docs.aws.amazon.com/eks/latest/best-practices/cost-opt.html",
+      "title": "EKS cost optimization guidance",
+      "snippet": "Managed Kubernetes adds operational overhead and cost controls that matter once workloads grow or require resilience.",
+      "provider": "fixture",
+      "rank": 3
+    }
+  ],
+  "pages": [
+    {
+      "url": "https://docs.docker.com/compose/intro/features-uses/",
+      "title": "Docker Compose features and use cases",
+      "content": "Docker Compose lets operators define multi-container applications in a compose.yaml file, start the stack with a single command, and keep local or small self-hosted services simple. The guide focuses on developer workflows, quick iteration, and low operational overhead.",
+      "source": "html",
+      "language": "en",
+      "published_at": "",
+      "last_updated": "2026-03-10",
+      "error": null
+    },
+    {
+      "url": "https://kubernetes.io/docs/concepts/overview/",
+      "title": "Kubernetes overview",
+      "content": "Kubernetes manages desired state across a cluster, schedules containers, supports self-healing, rolling updates, and service discovery, and is intended for production workloads that need scaling and resilience. The overview also notes the steeper operational model compared with simpler tooling.",
+      "source": "html",
+      "language": "en",
+      "published_at": "",
+      "last_updated": "2026-02-15",
+      "error": null
+    },
+    {
+      "url": "https://docs.aws.amazon.com/eks/latest/best-practices/cost-opt.html",
+      "title": "EKS cost optimization guidance",
+      "content": "AWS documents that Kubernetes platforms introduce management and cost tradeoffs, including cluster overhead, autoscaling choices, and the need to right-size infrastructure. For smaller stacks, that overhead can outweigh the benefits unless high availability, scaling, or team workflows justify it.",
+      "source": "html",
+      "language": "en",
+      "published_at": "",
+      "last_updated": "2026-01-20",
+      "error": null
+    }
+  ],
+  "gates": {
+    "generic_answer": {
+      "min_query_term_overlap": 2
+    },
+    "thin_answer": {
+      "min_findings": 3,
+      "min_summary_chars": 120
+    },
+    "grounding_citation": {
+      "min_citations": 3,
+      "min_supported_findings": 3
+    },
+    "contradiction_handling": {
+      "required": true
+    },
+    "unsupported_certainty": {
+      "max_confidence": "high",
+      "require_uncertainty": false
+    },
+    "regression_baseline": {
+      "baseline": {
+        "min_citations": 3,
+        "min_findings": 3,
+        "min_summary_chars": 120
+      }
+    }
+  }
+}

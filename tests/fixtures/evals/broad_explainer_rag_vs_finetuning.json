@@ -1,0 +1,20 @@
+{
+  "id": "broad_explainer_rag_vs_finetuning",
+  "category": "broad explainer",
+  "query": "Explain retrieval-augmented generation versus fine-tuning for enterprise assistants.",
+  "endpoint": "/research",
+  "depth": "quality",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "generic_explainer",
+    "no_decision_factors",
+    "thin_grounding"
+  ],
+  "good_enough_criteria": [
+    "Explains the distinction clearly",
+    "Includes at least 3 citations",
+    "Mentions decision factors like freshness or control"
+  ],
+  "baseline_response_snippet": "RAG keeps knowledge external and fresh, while fine-tuning changes model behavior and can be slower to update.",
+  "scenario": "strong_research"
+}

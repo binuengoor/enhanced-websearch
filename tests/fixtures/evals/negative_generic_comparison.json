@@ -1,0 +1,88 @@
+{
+  "name": "negative_generic_comparison",
+  "expected_pass": false,
+  "expected_failed_gates": [
+    "generic_answer",
+    "thin_answer",
+    "grounding_citation",
+    "unsupported_certainty",
+    "regression_baseline"
+  ],
+  "request": {
+    "query": "Compare note-taking apps for students",
+    "mode": "fast",
+    "source_mode": "web",
+    "depth": "balanced",
+    "max_iterations": 1,
+    "include_citations": true,
+    "include_debug": false,
+    "include_legacy": false,
+    "strict_runtime": false,
+    "user_context": {}
+  },
+  "provider_rows": [
+    {
+      "url": "https://example.com/blog/apps-overview",
+      "title": "Apps overview",
+      "snippet": "Note-taking apps can help students stay organized and productive.",
+      "provider": "fixture",
+      "rank": 1
+    },
+    {
+      "url": "https://example.org/study-tools",
+      "title": "Study tools",
+      "snippet": "Students should pick the best app for their needs and preferences.",
+      "provider": "fixture",
+      "rank": 2
+    }
+  ],
+  "pages": [
+    {
+      "url": "https://example.com/blog/apps-overview",
+      "title": "Apps overview",
+      "content": "Students use apps to take notes. It depends on your needs and there are several factors to consider when choosing one.",
+      "source": "html",
+      "language": "en",
+      "published_at": "",
+      "last_updated": "2026-01-01",
+      "error": null
+    },
+    {
+      "url": "https://example.org/study-tools",
+      "title": "Study tools",
+      "content": "Overall, it is important to pick an app you like. The best choice depends on your workflow and what features you prefer.",
+      "source": "html",
+      "language": "en",
+      "published_at": "",
+      "last_updated": "2026-01-02",
+      "error": null
+    }
+  ],
+  "gates": {
+    "generic_answer": {
+      "min_query_term_overlap": 2
+    },
+    "thin_answer": {
+      "min_findings": 2,
+      "min_summary_chars": 90
+    },
+    "grounding_citation": {
+      "min_citations": 3,
+      "min_supported_findings": 2
+    },
+    "contradiction_handling": {
+      "required": false
+    },
+    "unsupported_certainty": {
+      "max_confidence": "medium",
+      "require_uncertainty": true
+    },
+    "regression_baseline": {
+      "baseline": {
+        "min_citations": 3,
+        "min_findings": 2,
+        "min_summary_chars": 90
+      }
+    }
+  }
+}

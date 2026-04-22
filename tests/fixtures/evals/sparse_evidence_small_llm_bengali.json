@@ -1,0 +1,20 @@
+{
+  "id": "sparse_evidence_small_llm_bengali",
+  "category": "sparse-evidence",
+  "query": "What is the best small open model for Bengali legal summarization on consumer hardware?",
+  "endpoint": "/research",
+  "depth": "quality",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "invented_consensus",
+    "unsupported_certainty",
+    "missing_caveat"
+  ],
+  "good_enough_criteria": [
+    "Expresses uncertainty carefully",
+    "Includes at least 2 citations",
+    "Does not claim settled benchmarking if evidence is sparse"
+  ],
+  "baseline_response_snippet": "Evidence is limited, so any recommendation should be framed as provisional rather than definitive.",
+  "scenario": "sparse_research"
+}

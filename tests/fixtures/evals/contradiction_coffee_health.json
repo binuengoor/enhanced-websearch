@@ -1,0 +1,20 @@
+{
+  "id": "contradiction_coffee_health",
+  "category": "contradiction-heavy",
+  "query": "Is coffee good or bad for long-term health outcomes?",
+  "endpoint": "/research",
+  "depth": "balanced",
+  "source_mode": "web",
+  "expected_failure_modes": [
+    "overstates_consensus",
+    "ignores_subgroup_caveats",
+    "thin_answer"
+  ],
+  "good_enough_criteria": [
+    "Shows nuance across outcomes or populations",
+    "Includes at least 3 citations",
+    "Signals uncertainty where appropriate"
+  ],
+  "baseline_response_snippet": "Coffee research often shows mixed associations, so good answers should separate population-level patterns from caveats.",
+  "scenario": "contradiction_research"
+}
