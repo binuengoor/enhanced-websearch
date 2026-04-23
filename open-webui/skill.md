@@ -56,15 +56,16 @@ Use `sequentialthinking` when the logic itself is hard enough to benefit from ex
 
 Use subagents when there are multiple independent workstreams or a clean subtask that can be delegated.
 
-## Escalation
+## Escalation (Open WebUI — sequential)
 
+Open WebUI tool calling is sequential. Do not plan parallel work.
 Start light and escalate only when needed:
 
 1. direct answer
 2. `concise_search`
-3. `research_search`
-4. targeted verification
-5. parallel or delegated work
+3. `research_search` (only if `concise_search` was not enough)
+4. targeted verification (`fetch_page` / `extract_page_structure`)
+5. answer
 
 Stop once the answer is already good enough.
 
@@ -81,19 +82,18 @@ For non-trivial questions:
 
 Do not run angles mechanically. Reassess after each pass.
 
-## Parallel search-plus-research workflow
+## Sequential deep-dive workflow
 
-For high-value questions, do not rely on one path.
+For high-value or complex questions, use a serial pass:
 
-Recommended pattern:
+1. `concise_search` first for fast grounding and quick sources
+2. assess the result — is the answer already solid?
+3. if not, run `research_search` with `balanced` depth for deeper synthesis
+4. when research returns, compare both passes
+5. do at most one targeted `fetch_page` if a key claim still needs checking
+6. produce one consolidated answer with the strongest supported claims
 
-1. start `research_search` using `balanced` depth by default
-2. while it runs, independently use `concise_search` and reasoning to build a provisional answer
-3. if needed, use `fetch_page` on one or two key URLs to verify disputed claims
-4. when research returns, compare the two lines of evidence
-5. produce one consolidated answer with the strongest supported claims
-
-This pattern is especially useful for:
+This is especially useful for:
 - product and market comparisons
 - technical evaluations
 - current-events synthesis
