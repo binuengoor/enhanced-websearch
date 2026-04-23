@@ -111,8 +111,6 @@ class ConfigLoadingTests(unittest.TestCase):
               base_url: ""
               timeout_s: 20
               model_id: ""
-            planner:
-              llm_fallback_enabled: false
             """
         )
 
@@ -123,7 +121,6 @@ class ConfigLoadingTests(unittest.TestCase):
                 "EWS_COMPILER_BASE_URL": "http://litellm.local/v1",
                 "EWS_COMPILER_TIMEOUT": "99",
                 "EWS_COMPILER_MODEL_ID": "gpt-4o-mini",
-                "EWS_PLANNER_LLM_FALLBACK_ENABLED": "true",
             },
             clear=False,
         ):
@@ -133,7 +130,6 @@ class ConfigLoadingTests(unittest.TestCase):
         self.assertEqual(config.compiler.base_url, "")
         self.assertEqual(config.compiler.timeout_s, 20)
         self.assertEqual(config.compiler.model_id, "")
-        self.assertFalse(config.planner.llm_fallback_enabled)
 
 
 if __name__ == "__main__":

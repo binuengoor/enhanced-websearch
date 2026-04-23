@@ -66,7 +66,6 @@ class RunHistoryTests(unittest.IsolatedAsyncioTestCase):
         config = SimpleNamespace(
             search_limits=SimpleNamespace(max_provider_attempts=1, max_pages_to_fetch=4),
             vane=SimpleNamespace(enabled=False),
-            planner=SimpleNamespace(llm_fallback_enabled=False),
             cache=SimpleNamespace(ttl_general_s=300, ttl_recency_s=45, page_cache_ttl_s=120),
         )
         self.history = RecentRunHistory(max_entries=2)

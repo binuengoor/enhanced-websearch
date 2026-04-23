@@ -306,7 +306,6 @@ class ResearchOrchestrator:
                 request_id=request_id,
                 started=started,
                 selected_mode=selected_mode,
-                mode_budget=mode_budget,
                 progress_callback=progress_callback,
             )
             if vetted_payload is not None:
@@ -584,7 +583,6 @@ class ResearchOrchestrator:
         request_id: str,
         started: float,
         selected_mode: str,
-        mode_budget: Any,
         progress_callback: ProgressCallback | None = None,
     ) -> Dict[str, Any] | None:
         vane_info = payload.get("diagnostics", {}).get("synthesis", {}).get("vane", {})
@@ -757,19 +755,6 @@ class ResearchOrchestrator:
         if isinstance(query, str) and query.strip():
             return [query.strip()]
         return []
-
-    def _infer_compat_mode(self, req: PerplexitySearchRequest) -> str:
-        if len(self._normalize_queries(req.query)) > 1:
-            return "research"
-        if req.search_recency_filter or (req.max_tokens and req.max_tokens >= 50000):
-            return "research"
-        if req.max_tokens_per_page and req.max_tokens_per_page >= 4096:
-            return "deep"
-        if req.search_domain_filter or req.search_language_filter or req.country or req.search_mode in {"academic", "sec"}:
-            return "deep"
-        if req.max_results <= 3:
-            return "fast"
-        return "auto"
 
     def _map_search_mode(self, search_mode: str | None) -> str:
         if search_mode == "academic":

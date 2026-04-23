@@ -91,10 +91,6 @@ class QueryPlanner:
             "reason": reason,
             "profile": profile,
         }
-
-    def choose_mode(self, requested_mode: str, query: str) -> str:
-        return str(self.build_route_decision(requested_mode, query)["selected_mode"])
-
     def initial_plan(self, query: str, mode: str) -> List[Dict[str, str]]:
         subquestions = self.decompose_query(query)
         plan = [{"step": "primary", "text": query, "purpose": "primary"}]
@@ -139,35 +135,3 @@ class QueryPlanner:
         if len(subquestions) > 1:
             return f"{subquestions[-1]} latest evidence"
         return f"{query} limitations tradeoffs"
-
-    def quick_profile(
-        self,
-        query: str,
-        max_results: int,
-        has_filters: bool,
-        recency: bool,
-        search_mode: str | None,
-    ) -> Dict[str, str | int]:
-        profile = self.classify_complexity(query)
-
-        depth = "quick"
-        max_iterations = 1
-
-        if has_filters or profile["is_comparison"] or profile["is_recommendation"]:
-            depth = "balanced"
-            max_iterations = 2
-        elif profile["is_long"] or max_results > 8:
-            depth = "balanced"
-
-        if recency:
-            depth = "quick"
-
-        if search_mode == "academic":
-            depth = "quality"
-            max_iterations = 2
-
-        return {
-            "mode": "fast",
-            "depth": depth,
-            "max_iterations": max_iterations,
-        }

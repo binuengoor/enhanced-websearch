@@ -69,10 +69,6 @@ class CompilerConfig(BaseModel):
     model_id: str = ""
 
 
-class PlannerConfig(BaseModel):
-    llm_fallback_enabled: bool = False
-
-
 class LoggingConfig(BaseModel):
     level: str = "INFO"
     json: bool = False
@@ -87,7 +83,6 @@ class AppConfig(BaseModel):
     scraping: ScrapingConfig = Field(default_factory=ScrapingConfig)
     vane: VaneConfig = Field(default_factory=VaneConfig)
     compiler: CompilerConfig = Field(default_factory=CompilerConfig)
-    planner: PlannerConfig = Field(default_factory=PlannerConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     @property
