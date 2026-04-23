@@ -7,14 +7,14 @@ routing:
   failure_threshold: 2
 
 search_limits:
-  max_provider_attempts: 2
-  max_pages_to_fetch: 5
+  max_provider_attempts: 4
+  max_pages_to_fetch: 10
 
 providers:
   - name: searxng
     kind: searxng
     enabled: true
-    weight: 3
+    weight: 2
     timeout_s: 12
     base_url: ${EWS_SEARXNG_BASE_URL}
 
