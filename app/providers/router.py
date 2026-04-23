@@ -35,6 +35,12 @@ class ProviderRouter:
     def health_snapshot(self) -> List[ProviderHealthRecord]:
         return list(self._health.values())
 
+    def get_provider(self, name: str) -> SearchProvider | None:
+        for slot in self._slots:
+            if slot.provider.name == name:
+                return slot.provider
+        return None
+
     def _is_ready(self, rec: ProviderHealthRecord) -> bool:
         return rec.enabled and rec.cooldown_until <= time.time()
 

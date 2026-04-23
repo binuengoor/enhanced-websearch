@@ -47,7 +47,7 @@ class SearxngCompatServiceTests(unittest.IsolatedAsyncioTestCase):
                 {"hits": 0, "misses": 1},
             )
 
-        orch = SimpleNamespace(_search_once=fake_search_once)
+        orch = SimpleNamespace(search_rows=fake_search_once)
         config = SimpleNamespace(search_limits=SimpleNamespace(max_provider_attempts=2))
         service = SearxngCompatService(config=config, orchestrator=orch, router=router)
 
@@ -70,7 +70,7 @@ class SearxngCompatServiceTests(unittest.IsolatedAsyncioTestCase):
                 {"hits": 0, "misses": 1},
             )
 
-        orch = SimpleNamespace(_search_once=fake_search_once)
+        orch = SimpleNamespace(search_rows=fake_search_once)
         config = SimpleNamespace(search_limits=SimpleNamespace(max_provider_attempts=2))
         service = SearxngCompatService(config=config, orchestrator=orch, router=router)
 
@@ -82,7 +82,7 @@ class SearxngCompatServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_media_requests_passthrough_for_images_and_videos(self):
         router = ProviderRouter([ProviderSlot(provider=DummyProvider("searxng", base_url="https://searx.example"), weight=1, enabled=True)], 10, 1)
-        orch = SimpleNamespace(_search_once=None)
+        orch = SimpleNamespace(search_rows=None)
         config = SimpleNamespace(search_limits=SimpleNamespace(max_provider_attempts=2))
         service = SearxngCompatService(config=config, orchestrator=orch, router=router)
 
@@ -122,7 +122,7 @@ class SearxngCompatServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_media_detection_uses_category_or_engine_tokens(self):
         router = ProviderRouter([ProviderSlot(provider=DummyProvider("searxng"), weight=1, enabled=True)], 10, 1)
-        orch = SimpleNamespace(_search_once=None)
+        orch = SimpleNamespace(search_rows=None)
         config = SimpleNamespace(search_limits=SimpleNamespace(max_provider_attempts=2))
         service = SearxngCompatService(config=config, orchestrator=orch, router=router)
 
@@ -156,7 +156,7 @@ class SearxngCompatRouteTests(unittest.TestCase):
         app.state.orchestrator = SimpleNamespace(
             execute_perplexity_search=execute_perplexity_search,
             execute_search=execute_search,
-            _search_once=search_once,
+            search_rows=search_once,
             record_failed_run=lambda **kwargs: None,
         )
         app.state.config = SimpleNamespace(search_limits=SimpleNamespace(max_provider_attempts=2))

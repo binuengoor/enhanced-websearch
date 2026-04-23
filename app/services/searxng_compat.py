@@ -62,7 +62,7 @@ class SearxngCompatService:
         return CompatVerticalDecision(vertical="web", passthrough_media=False)
 
     async def _web_compat_search(self, req: SearxngCompatRequest) -> SearxngCompatResponse:
-        rows, trace, _cache_meta = await self.orchestrator._search_once(
+        rows, trace, _cache_meta = await self.orchestrator.search_rows(
             query=req.q,
             mode="fast",
             source_mode="web",
@@ -129,10 +129,7 @@ class SearxngCompatService:
         )
 
     def _find_searxng_provider(self) -> SearchProvider | None:
-        for slot in self.router._slots:
-            if slot.provider.name == "searxng":
-                return slot.provider
-        return None
+        return self.router.get_provider("searxng")
 
     def _map_web_result(self, item: Dict[str, Any]) -> SearxngCompatResult:
         return SearxngCompatResult(

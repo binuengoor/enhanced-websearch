@@ -129,7 +129,7 @@ class ResearchOrchestrator:
                 query_text,
             )
 
-            rows, trace, cache_meta = await self._search_once(
+            rows, trace, cache_meta = await self.search_rows(
                 query=query_text,
                 mode=selected_mode,
                 source_mode=req.source_mode,
@@ -515,7 +515,7 @@ class ResearchOrchestrator:
             errors=errors,
         )
 
-    async def _search_once(
+    async def search_rows(
         self,
         query: str,
         mode: str,
