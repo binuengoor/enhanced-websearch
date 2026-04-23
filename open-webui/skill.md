@@ -12,6 +12,7 @@ Use this skill when the model has access to:
 - `extract_page_structure`
 - `research_search`
 - optionally `sequential-thinking`
+- optionally a time tool such as `get_current_timestamp`, `calculate_timestamp`, or an MCP time tool
 
 This skill is designed for Open WebUI Native / Agentic Mode.
 It teaches the model how to use the search service well, with `research_search` as the preferred path for meaningful synthesis-heavy questions.
@@ -113,6 +114,15 @@ Reassess after each pass.
 Treat `research_search` as slower and more expensive than `concise_search`, but still the preferred path for meaningful synthesis-heavy questions.
 Use it proactively for report-style work, not merely as a last resort.
 
+### Research Depth Guidance
+
+When using `research_search`:
+- prefer `depth="balanced"` by default
+- use `depth="speed"` for narrower or time-sensitive questions where a quick research pass is enough
+- use `depth="quality"` only for clearly deep, high-stakes, or especially complex research where the extra latency is justified
+
+Do not default to `quality` for ordinary report-style questions.
+
 Prefer `research_search` for:
 - research reports, reports, analyses, deep dives, assessments, and overviews
 - technical evaluations
@@ -143,6 +153,10 @@ When using `fetch_page`:
 - prefer authoritative, primary, or well-regarded sources when possible
 - use the page to verify claims, not to dump long excerpts into the final answer
 
+After `research_search` returns:
+- use `concise_search` to close explicit gaps, resolve TBDs, and check for newer developments when needed
+- use `fetch_page` only for one or two high-value follow-up URLs that materially improve the answer
+
 ## Output Rules
 
 - Give the answer, not a tool transcript.
@@ -152,6 +166,8 @@ When using `fetch_page`:
 - Keep the response proportional to the question.
 - If you identify a concrete factual gap you can quickly resolve, resolve it before answering instead of leaving it as a caveat.
 - For fast-moving topics such as sports seasons, politics, markets, and active product cycles, verify that your findings extend to the present before answering.
+- If a time tool is available and the question depends on current or recent information, get the current date or timestamp before forming recency-sensitive searches or interpreting season/year context.
+- Do not call the time tool for stable or timeless questions that do not depend on "now".
 - Do not dump raw JSON unless the user explicitly asks for raw output.
 
 ## Suggested Answer Structure
