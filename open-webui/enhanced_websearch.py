@@ -121,8 +121,11 @@ class Tools:
     # Stream parser for /research
     # ------------------------------------------------------------------ #
     # The backend /research endpoint returns text/event-stream content type.
-    # Current practice: lines are JSON objects with "type" and "data" fields,
-    # e.g. {"type":"response","data":"some text here"}
+    # It may arrive as:
+    #   1. Plain JSON-lines: {"type":"response","data":"..."}
+    #   2. SSE framing: event: / data: {"type":"response","data":"..."}
+    #   3. Wrapped envelope: {"events":[{"event":"message","data":{"type":"response",...}}]}
+    #   4. SSE data containing the wrapped envelope (combo of 2+3)
     #
     # We consume all events and extract the accumulated body text for the
     # model to synthesize. We also return the raw events list for debugging.
@@ -142,6 +145,45 @@ class Tools:
         data_lines: list[str] = []
         error_info: Optional[dict] = None
 
+        def _is_record(value: Any) -> bool:
+            return isinstance(value, dict)
+
+        def _extract_response_text(parsed: Any) -> None:
+            """Extract response text and sources from a parsed JSON object.
+            Handles both direct {type, data} and nested events envelope formats."""
+            if not _is_record(parsed):
+                return
+
+            # Direct form: {"type": "response", "data": "..."}
+            if parsed.get("type") == "response":
+                d = parsed.get("data", "")
+                if isinstance(d, str) and d:
+                    body_parts.append(d)
+            elif parsed.get("type") == "sources":
+                data = parsed.get("data", [])
+                if isinstance(data, list):
+                    sources_payload.extend(item for item in data if isinstance(item, dict))
+
+            # Wrapped envelope form: {"events": [{"event": "message", "data": {"type": "response", ...}}, ...]}
+            events = parsed.get("events")
+            if isinstance(events, list):
+                for event in events:
+                    if not _is_record(event):
+                        continue
+                    # Standard MCP/agent event shape: event -> data -> type/data
+                    inner = event.get("data")
+                    if _is_record(inner):
+                        _extract_response_text(inner)
+                    # Also check top-level keys in the event entry itself
+                    if event.get("type") == "response":
+                        d = event.get("data", "")
+                        if isinstance(d, str) and d:
+                            body_parts.append(d)
+                    elif event.get("type") == "sources":
+                        data = event.get("data", [])
+                        if isinstance(data, list):
+                            sources_payload.extend(item for item in data if isinstance(item, dict))
+
         def _flush_sse_block() -> None:
             nonlocal event_type, data_lines
             if not data_lines:
@@ -152,15 +194,7 @@ class Tools:
                 parsed = json.loads(raw)
             except json.JSONDecodeError:
                 parsed = raw
-            if isinstance(parsed, dict):
-                if parsed.get("type") == "response":
-                    d = parsed.get("data", "")
-                    if isinstance(d, str) and d:
-                        body_parts.append(d)
-                elif parsed.get("type") == "sources":
-                    data = parsed.get("data", [])
-                    if isinstance(data, list):
-                        sources_payload.extend(item for item in data if isinstance(item, dict))
+            _extract_response_text(parsed)
             data_lines = []
             event_type = "message"
 
@@ -173,14 +207,7 @@ class Tools:
             if line.startswith("{"):
                 try:
                     obj = json.loads(line)
-                    if obj.get("type") == "response":
-                        d = obj.get("data", "")
-                        if isinstance(d, str) and d:
-                            body_parts.append(d)
-                    elif obj.get("type") == "sources":
-                        data = obj.get("data", [])
-                        if isinstance(data, list):
-                            sources_payload.extend(item for item in data if isinstance(item, dict))
+                    _extract_response_text(obj)
                     return
                 except json.JSONDecodeError:
                     pass
@@ -367,16 +394,25 @@ class Tools:
         sources = result.get("sources") or []
         if sources:
             cleaned_sources = []
-            for item in sources[:12]:
+            seen_sources: set[tuple[Optional[str], Optional[str]]] = set()
+            for item in sources:
                 metadata = item.get("metadata", {}) if isinstance(item, dict) else {}
+                title = metadata.get("title")
+                url = metadata.get("url")
+                key = (title, url)
+                if key in seen_sources:
+                    continue
+                seen_sources.add(key)
                 cleaned_sources.append(
                     {
-                        "title": metadata.get("title"),
-                        "url": metadata.get("url"),
+                        "title": title,
+                        "url": url,
                     }
                 )
+                if len(cleaned_sources) >= 12:
+                    break
             result["sources"] = cleaned_sources
-            result["source_count"] = len(sources)
+            result["source_count"] = len(cleaned_sources)
 
         return result
 
