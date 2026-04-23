@@ -269,37 +269,16 @@ MCP host-header behavior:
 - FastMCP matches the full `Host` header, and the service now allows both bare hosts and wildcard-port entries.
 - MCP transport security now defaults to permissive local/LAN-friendly values; custom allowlist envs are no longer required for normal deployments.
 
-## Planning foundation
-
-`/internal/search` and `/research` currently expose two thin structured planning artifacts in diagnostics:
-
-- `routing_decision`: requested mode, selected mode, source of the decision, heuristic reason, and detected query profile
-- `research_plan`: bounded step list with the initial query-expansion plan and max iteration budget
-
-Current behavior remains intentionally conservative:
-
-- mode selection is still heuristic-first
-- `/search` remains on the concise fast path
-- long-form execution is in transition and should not be treated as a stable local orchestration contract
-- the new schema is there to keep endpoint contracts stable while the implementation is simplified
-
 ## Provider routing behavior
 
 Router strategy:
 
 - weighted rotating provider order
 - checks provider cooldown state
-- retries up to mode-specific budget
+- retries up to the configured internal search limits
 - marks provider cooldown after rate-limit or repeated failures
 - falls back to next eligible provider
 - records provider trace in diagnostics
-
-Mode defaults (configurable):
-
-- fast: low attempts, low page count, one pass
-- deep: broader retrieval, optional Vane
-- research: iterative cycles with bounded follow-up queries
-- auto: heuristic selection based on query profile
 
 ## Caching
 
@@ -339,30 +318,12 @@ YAML sections:
 
 - service
 - routing
-- provider_preferences
-- modes
+- search_limits
 - providers
 - cache
 - scraping
 - vane
-- compiler (transitional)
-- planner (transitional)
 - logging
-
-Provider preferences let you bias routing per mode without changing provider weights:
-
-```yaml
-provider_preferences:
-  research:
-    prefer: [exa]
-    avoid: [searxng]
-```
-
-Notes:
-- `prefer` providers are tried before neutral providers for that mode.
-- `avoid` providers are still eligible, but moved to the back of the mode-specific order.
-- Preferences preserve the router's normal weighted rotation within each group.
-- Config load now fails fast if a preferred or avoided provider name does not match a configured provider.
 
 ## Run
 
@@ -378,35 +339,23 @@ Docker compose:
 
 ## Open WebUI wrapper guidance
 
-Use a single-file Open WebUI tool that:
+Use a thin Open WebUI wrapper that:
 
-- accepts tool arguments
-- calls POST /internal/search on this service
-- returns the service JSON unchanged
-- optionally proxies /fetch and /extract
+- calls `POST /search` for Perplexity-style concise search
+- calls `POST /research` for Vane-backed research
+- optionally proxies `/fetch` and `/extract`
 
 Keep wrapper logic minimal and stateless.
 
-The thin wrapper now emits periodic Open WebUI status updates while waiting for the backend, but it still performs a blocking HTTP request under the hood. Default backend request timeout is `EWS_REQUEST_TIMEOUT=60`; raise it further only if your backend is legitimately slow.
+## Integration Notes
 
-## Integration Migration Notes
+Use this mapping:
 
-Use this mapping after the `/search` + `/research` split:
+- Perplexity-compatible clients: call `POST /search`
+- Vane-backed long-form research clients: call `POST /research`
+- SearxNG-style clients: call `GET /compat/searxng/search`
 
-- Perplexity-compatible clients: call `POST /search`.
-- Long-form structured research clients: call `POST /research`.
-- Advanced internal callers that need explicit mode control (`auto|fast|deep|research`): use `POST /internal/search`.
-
-MCP guidance:
-
-- `perplexity_search` should target `POST /search` and only send deprecated `mode` when explicitly requested.
-- `research_search` should target `POST /research` for explicit long-form behavior.
-- `search` can remain as a back-compat alias for rich payload paths.
-
-OpenWebUI thin-client guidance:
-
-- Add explicit methods for concise `POST /search` and long-form `POST /research`.
-- Keep any existing rich/internal method as back-compat where needed.
+`POST /internal/search` remains only as a deprecated compatibility shim.
 
 ## Open WebUI System Prompt (Token-Efficient)
 
@@ -425,7 +374,6 @@ Behavior:
 - Answer directly for simple, stable questions.
 - Use `concise_search` for quick factual lookups and lightweight comparisons.
 - Use `research_search` for broad, technical, evaluative, or source-sensitive questions.
-- Treat `balanced` as the normal public research depth; reserve `quality` for deliberate higher-latency work.
 - Use `fetch_page` / `extract_page_structure` only for targeted verification.
 - Stop when answer quality is sufficient.
 
