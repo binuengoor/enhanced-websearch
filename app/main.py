@@ -181,9 +181,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Enhanced Websearch Service", version="0.1.0", lifespan=lifespan)
+auth_enabled = os.getenv("EWS_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"}
+auth_token = os.getenv("EWS_AUTH_TOKEN", "") if auth_enabled else ""
 app.add_middleware(
     OptionalBearerTokenMiddleware,
-    bearer_token=os.getenv("EWS_BEARER_TOKEN", ""),
+    bearer_token=auth_token,
     exempt_paths=["/health", "/docs", "/redoc", "/openapi.json", "/mcp"],
 )
 app.include_router(routes.router)

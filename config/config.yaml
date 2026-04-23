@@ -1,8 +1,6 @@
 service:
   host: 0.0.0.0
   port: 8091
-  auto_export_research: true
-  report_output_dir: artifacts/reports
   request_timeout_s: 25
 
 routing:
@@ -106,22 +104,13 @@ scraping:
   flaresolverr_url: ${FLARESOLVERR_URL}
 
 vane:
-  enabled: ${VANE_ENABLED}
+  enabled: true
   url: ${VANE_URL}
   timeout_s: 25
   chat_provider_id: ${VANE_CHAT_PROVIDER_ID}
   chat_model_key: auto-main
   embedding_provider_id: ${VANE_EMBED_PROVIDER_ID}
   embedding_model_key: Xenova/nomic-embed-text-v1
-
-compiler:
-  enabled: false
-  base_url: ${LITELLM_SEARCH_BASE_URL}
-  timeout_s: 20
-  model_id: ""
-
-planner:
-  llm_fallback_enabled: false
 
 logging:
   level: INFO

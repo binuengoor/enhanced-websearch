@@ -10,7 +10,7 @@ Mode = Literal["auto", "fast", "deep", "research", "fast_fallback"]
 ExecutionMode = Literal["fast", "deep", "research", "fast_fallback"]
 SourceMode = Literal["web", "academia", "social", "all"]
 DepthMode = Literal["quick", "balanced", "quality"]
-ResearchDepthMode = Literal["balanced", "quality"]
+ResearchDepthMode = Literal["quick", "balanced", "quality"]
 DecisionSource = Literal["heuristic", "llm", "override"]
 
 

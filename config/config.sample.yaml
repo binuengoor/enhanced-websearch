@@ -105,26 +105,13 @@ scraping:
   flaresolverr_url: ${FLARESOLVERR_URL}
 
 vane:
-  enabled: ${VANE_ENABLED}
+  enabled: true
   url: ${VANE_URL}
   timeout_s: 25
-  default_optimization_mode: balanced
   chat_provider_id: ${VANE_CHAT_PROVIDER_ID}
   chat_model_key: auto-main
   embedding_provider_id: ${VANE_EMBED_PROVIDER_ID}
   embedding_model_key: Xenova/nomic-embed-text-v1
-
-# Transitional local research settings. `/search` no longer uses compiler or
-# planner-based shaping; keep these only if older `/research` internals still
-# need them during migration.
-compiler:
-  enabled: false
-  base_url: ""
-  timeout_s: 20
-  model_id: ""
-
-planner:
-  llm_fallback_enabled: false
 
 logging:
   level: INFO

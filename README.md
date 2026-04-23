@@ -14,11 +14,12 @@ This service is the local search/fetch compatibility backend. It owns:
 - compatibility surfaces such as `/compat/searxng`
 - diagnostics, provider traces, cache reporting, recent-run history, and MCP tools mounted on the same ASGI app at `/mcp`
 
-Refactor note:
+Current shape:
 
 - `/search` stays local and deterministic.
-- `/research` is being simplified toward a transparent Vane-backed flow.
-- older local planner/compiler/orchestrator research machinery still exists during the transition, but it should be treated as transitional rather than the target architecture.
+- `/research` is a transparent Vane-backed streaming proxy.
+- `/compat/searxng` provides a SearxNG-shaped compatibility surface.
+- `/fetch` and `/extract` keep the local scraping/fetch path.
 
 The Open WebUI workspace tool becomes a thin HTTP wrapper.
 
@@ -28,7 +29,7 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 - app/api/routes.py: HTTP endpoints
 - app/core/config.py: YAML + env config loading
 - app/providers/: provider implementations + router
-- app/services/: fetch/extract, ranking, Vane integration, and transitional planner/orchestrator code still being simplified
+- app/services/: fetch/extract, ranking, Vane integration, and remaining local search/orchestrator code
 - app/cache/memory_cache.py: in-memory TTL cache
 - config/config.yaml: final service configuration used by compose
 - config/config.sample.yaml: template you can copy from
@@ -90,7 +91,7 @@ Optional Perplexity-style extensions are also accepted, including:
 
 Behavior notes:
 
-- `/search` always executes in a fast profile with lightweight heuristic planning.
+- `/search` always executes in a deterministic local profile.
 - `search_mode: "auto"` is accepted and behaves the same as omitting `search_mode` entirely.
 - Use `/research` for long-form output.
 
@@ -239,18 +240,6 @@ Behavior notes:
 - Backend/provider failures degrade to HTTP 200 with an empty SearxNG-like payload.
 - This adapter is separate from the canonical `POST /search` and `POST /research` contracts.
 
-### POST /research/export
-
-Exports a completed `/research` response as local artifacts without changing the normal response contract.
-Artifacts are written as:
-
-- `report.md`
-- `report.yaml`
-
-under `artifacts/reports/<timestamp-slug-random>/`.
-
-If `service.auto_export_research: true` is enabled, completed `/research` requests are exported automatically after successful completion.
-
 ### MCP tools at /mcp
 
 The same FastAPI app also mounts a FastMCP server at `/mcp`.
@@ -274,8 +263,8 @@ Tool guidance:
 
 Optional bearer token:
 
-- set `EWS_BEARER_TOKEN` to require `Authorization: Bearer <token>` on the HTTP surfaces, including `/mcp`
-- leave it blank for local/trusted setups
+- set `EWS_AUTH_ENABLED=true` and `EWS_AUTH_TOKEN` to require `Authorization: Bearer <token>` on HTTP surfaces
+- leave auth disabled for local/trusted setups
 
 MCP host-header behavior:
 
@@ -332,53 +321,21 @@ In-memory cache for v1:
 
 LiteLLM gateway setup defaults:
 
-- use one shared key: LITELLM_API_KEY
-- provider enablement is controlled by per-provider flags (applies to all providers)
-  - `EWS_PROVIDER_SEARXNG_ENABLED=true|false`
-  - `EWS_PROVIDER_BRAVE_SEARCH_ENABLED=true|false`
-  - `EWS_PROVIDER_SERPER_ENABLED=true|false`
-  - `EWS_PROVIDER_EXA_ENABLED=true|false`
-  - `EWS_PROVIDER_TAVILY_ENABLED=true|false`
-  - `EWS_PROVIDER_FIRECRAWL_ENABLED=true|false`
-  - `EWS_PROVIDER_LINKUP_ENABLED=true|false`
-- when a flag is unset, YAML `providers[].enabled` is used
+- use one shared key: `LITELLM_API_KEY`
+- enable or disable providers in `config/config.yaml`
+- each `litellm-search` provider uses `LITELLM_SEARCH_BASE_URL` and defaults to `LITELLM_API_KEY`
 
-Transitional LLM compiler settings (still read by the current code, but headed toward removal as `/search` stays deterministic and `/research` moves to Vane proxying):
+Vane research setup:
 
-- set `EWS_COMPILER_ENABLED=true` to enable
-- set `EWS_COMPILER_MODEL_ID` to the LiteLLM chat model id to use
-- set `EWS_COMPILER_BASE_URL` to your LiteLLM base (`.../v1` recommended)
-- set `EWS_COMPILER_API_KEY` for a compiler-specific auth key
-- if `EWS_COMPILER_API_KEY` is unset, compiler falls back to `LITELLM_API_KEY`
-- the same compiler is also used as a final research quality gate; if a long-form `research` response looks thin or generic, the service can fall back to a quick grounded search path before returning
-- `/research` requires at least one configured LLM path: either Vane (`VANE_ENABLED=true` plus `VANE_URL`) or the compiler (`EWS_COMPILER_ENABLED=true` plus `EWS_COMPILER_BASE_URL` and `EWS_COMPILER_MODEL_ID`)
-
-Transitional LLM planner fallback (`/search` profile selection):
-
-- set `EWS_PLANNER_LLM_FALLBACK_ENABLED=true` to allow LLM-assisted selection of `depth` and `max_iterations`
-- default is disabled and remains heuristic-only
-- if LLM planner selection fails for any reason, `/search` automatically falls back to the heuristic profile
-- treat this as compatibility wiring during the simplification work, not as the preferred long-term `/search` design
-
-When compiler output is accepted, each result may also include optional grounding metadata:
-
-- `citation_ids`: candidate ids used to ground the item
-- `evidence_spans`: short grounded excerpts
-- `confidence`: normalized 0..1 confidence from compiler
-- `grounding_notes`: optional short rationale
-
-Vane defaults:
-
-- `VANE_ENABLED` controls whether research flows can call Vane
-- during the transition, `/research` can still run when the compiler is configured even if Vane is disabled, because the old local path has not been fully removed yet
-- `VANE_DEFAULT_MODE` defaults to balanced and can be set to speed, balanced, or quality
-- expect Vane to become the primary `/research` backend as the simplification lands
+- `/research` requires `VANE_URL`
+- `/research` also requires `VANE_CHAT_PROVIDER_ID`, `VANE_CHAT_MODEL_KEY`, `VANE_EMBED_PROVIDER_ID`, and `VANE_EMBED_MODEL_KEY`
+- `config/config.yaml` and `config/config.sample.yaml` now use direct Vane provider id fields, not `_env` indirection
 
 Startup logs include:
 
 - active and disabled providers
 - routing policy and cooldown settings
-- whether Vane is enabled, its URL, and its default optimization mode
+- whether Vane is enabled and its configured model/provider ids are present
 - cache settings
 
 YAML sections:
@@ -510,5 +467,4 @@ Rules:
 
 ## Optional bearer token
 
-If you want to protect the HTTP service and MCP server, set `EWS_BEARER_TOKEN` in `.env`.
-The Open WebUI wrapper will forward the same token automatically when it is present.
+If you want to protect the HTTP service, set `EWS_AUTH_ENABLED=true` and `EWS_AUTH_TOKEN` in `.env`.
