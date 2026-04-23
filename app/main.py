@@ -155,10 +155,9 @@ async def lifespan(app: FastAPI):
         config.cache.ttl_recency_s,
     )
     logger.info(
-        "startup vane enabled=%s url=%s default_mode=%s chat_provider_id_set=%s embedding_provider_id_set=%s chat_model_key=%s embedding_model_key=%s",
+        "startup vane enabled=%s url=%s chat_provider_id_set=%s embedding_provider_id_set=%s chat_model_key=%s embedding_model_key=%s",
         config.vane.enabled,
         config.vane.url or "none",
-        config.vane.default_optimization_mode,
         bool(config.vane.chat_provider_id),
         bool(config.vane.embedding_provider_id),
         config.vane.chat_model_key,
