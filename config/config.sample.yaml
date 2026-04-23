@@ -1,8 +1,4 @@
-service:
-  request_timeout_s: 25
-
 routing:
-  policy: rotating_weighted
   cooldown_seconds: 90
   failure_threshold: 2
 

@@ -9,17 +9,12 @@ import yaml
 from pydantic import BaseModel, Field
 
 
-class ServiceConfig(BaseModel):
-    request_timeout_s: int = 25
-
-
 class SearchLimitsConfig(BaseModel):
     max_provider_attempts: int = 2
     max_pages_to_fetch: int = 5
 
 
 class RoutingConfig(BaseModel):
-    policy: str = "rotating_weighted"
     cooldown_seconds: int = 60
     failure_threshold: int = 2
 
@@ -75,7 +70,6 @@ class LoggingConfig(BaseModel):
 
 
 class AppConfig(BaseModel):
-    service: ServiceConfig = Field(default_factory=ServiceConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     search_limits: SearchLimitsConfig = Field(default_factory=SearchLimitsConfig)
     providers: List[ProviderEntry]

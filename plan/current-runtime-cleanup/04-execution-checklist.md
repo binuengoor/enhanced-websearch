@@ -63,11 +63,11 @@
 ## Phase 3: Consolidate Vane integration
 
 - [x] Check if VaneClient is still used after Phase 2
-- [ ] If VaneClient is only used by `/research` proxy, migrate to proxy
+- [x] If VaneClient is only used by `/research` proxy, migrate to proxy
 - [x] Remove VaneClient dependency from orchestrator
 - [x] Remove VaneClient import from main.py
 - [x] Update tests that stub VaneClient
-- [ ] Remove app/services/vane.py if no callers remain
+- [x] Remove app/services/vane.py if no callers remain
 - [ ] Commit
 
 ## Phase 4: Simplify compat layer
@@ -88,9 +88,9 @@
 
 ## Phase 6: Stale config cleanup
 
-- [ ] Remove `service.request_timeout_s` if not consumed
-- [ ] Remove `routing.policy` if router doesn't use it (only logs it)
-- [ ] Remove related config file entries
+- [x] Remove `service.request_timeout_s` if not consumed
+- [x] Remove `routing.policy` if router doesn't use it (only logs it)
+- [x] Remove related config file entries
 - [ ] Update tests
 - [ ] Commit
 

@@ -288,12 +288,3 @@ class ProviderHealthRecord(BaseModel):
     # Empty results are tracked separately — they don't count toward cooldown
     # but signal when a provider may be returning no content for queries.
     consecutive_empty_results: int = 0
-
-
-class ProviderResult(BaseModel):
-    url: str
-    title: str
-    snippet: str
-    source: str
-    provider: str
-    rank: int

@@ -108,8 +108,7 @@ async def lifespan(app: FastAPI):
     enabled_providers = [provider.name for provider in config.providers if provider.enabled]
     disabled_providers = [provider.name for provider in config.providers if not provider.enabled]
     logger.info(
-        "startup service=enhanced-websearch routing_policy=%s cooldown_seconds=%s failure_threshold=%s",
-        config.routing.policy,
+        "startup service=enhanced-websearch cooldown_seconds=%s failure_threshold=%s",
         config.routing.cooldown_seconds,
         config.routing.failure_threshold,
     )
