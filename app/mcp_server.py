@@ -106,7 +106,6 @@ async def lifespan(_: FastMCP):
 mcp = FastMCP(
     "Enhanced Websearch MCP",
     json_response=True,
-    stateless_http=True,
     instructions=(
         "Use this server for search, page fetches, structured extraction, and provider health. "
         "The research tool proxies Vane's streamed research output as-is; "
