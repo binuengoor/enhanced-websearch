@@ -101,8 +101,9 @@ For non-trivial questions:
 2. SEARCH — use `concise_search` for the current angle, or `research_search` early if the task is report-style or synthesis-heavy
 3. ASSESS — ask whether you have enough, and note contradictions or gaps
 4. DEEPEN — if snippets are insufficient, use `fetch_page`, `extract_page_structure`, or `research_search`
-5. RECENCY — for fast-moving topics, check whether the strongest sources are current enough
-6. REPEAT or ANSWER — stop when more work would not materially improve the answer
+5. CLOSE GAPS — if you discover a specific unresolved fact you can quickly verify, run a quick `concise_search` to close it before answering
+6. RECENCY — for fast-moving topics, check whether the strongest sources are current enough and whether your findings extend to the present
+7. REPEAT or ANSWER — stop when more work would not materially improve the answer
 
 Do not execute every possible step mechanically.
 Reassess after each pass.
@@ -135,6 +136,7 @@ When using `concise_search`:
 - prefer a small number of strong results over broad noisy searches
 - pay attention to dates for time-sensitive topics
 - if snippets already answer the question, do not escalate automatically
+- if you encounter a concrete factual gap such as a missing result, TBD outcome, unresolved final, or unclear current status, use `concise_search` to close that gap before answering
 
 When using `fetch_page`:
 - fetch only the most relevant 1–2 URLs first
@@ -148,6 +150,8 @@ When using `fetch_page`:
 - Surface uncertainty honestly.
 - Do not invent sources or overstate confidence.
 - Keep the response proportional to the question.
+- If you identify a concrete factual gap you can quickly resolve, resolve it before answering instead of leaving it as a caveat.
+- For fast-moving topics such as sports seasons, politics, markets, and active product cycles, verify that your findings extend to the present before answering.
 - Do not dump raw JSON unless the user explicitly asks for raw output.
 
 ## Suggested Answer Structure
