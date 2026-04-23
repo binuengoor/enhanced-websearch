@@ -141,40 +141,6 @@ Response:
 - HTTP 504 is returned for upstream timeouts
 - upstream non-2xx responses are surfaced with the upstream status code and a cleaned error detail
 
-### POST /internal/search
-
-Deprecated internal endpoint.
-
-- no real caller is documented in this repo
-- retained temporarily as a compatibility shim for local concise search only
-- returns a deprecation warning in the response body
-
-
-Request body:
-
-{
-  "query": "string",
-  "mode": "auto|fast|deep|research",
-  "source_mode": "web|academia|social|all",
-  "depth": "quick|balanced|quality",
-  "max_iterations": 4,
-  "include_citations": true,
-  "include_debug": false,
-  "include_legacy": false,
-  "strict_runtime": false,
-  "user_context": {}
-}
-
-Response shape is stable and includes:
-
-- query, mode, direct_answer, summary
-- findings, citations, sources, follow_up_queries
-- diagnostics: runtime, routing_decision, research_plan, query_plan, provider_trace, cache, errors, warnings
-- timings.total_ms
-- confidence
-
-Optional legacy output is opt-in with include_legacy.
-
 ### GET /health
 
 Returns service liveness.
@@ -355,7 +321,6 @@ Use this mapping:
 - Vane-backed long-form research clients: call `POST /research`
 - SearxNG-style clients: call `GET /compat/searxng/search`
 
-`POST /internal/search` remains only as a deprecated compatibility shim.
 
 ## Open WebUI System Prompt (Token-Efficient)
 

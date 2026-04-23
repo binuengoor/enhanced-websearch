@@ -63,14 +63,6 @@ async def search_root(
     return response.model_dump(exclude_none=True)
 
 
-@router.post("/internal/search", deprecated=True)
-async def search(payload: SearchRequest, orch: ResearchOrchestrator = Depends(get_orchestrator)):
-    response = await orch.execute_search(payload, endpoint="/search")
-    body = response.model_dump()
-    body["warnings"] = ["/internal/search is deprecated; use /search for concise search or /research for Vane-backed research"]
-    return body
-
-
 @router.post("/search")
 async def perplexity_search(
     payload: PerplexitySearchRequest,
