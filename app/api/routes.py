@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
 
 from app.core.config import redacted_config
 from app.models.contracts import (
     ExtractRequest,
     FetchRequest,
     PerplexitySearchRequest,
-    ProgressEvent,
     ResearchExportRequest,
     ResearchRequest,
     SearchRequest,
@@ -21,15 +17,12 @@ from app.models.contracts import (
 )
 from app.services.orchestrator import ResearchOrchestrator
 from app.services.report_exporter import ReportExporter
+from app.services.research_proxy import ResearchProxyService
 from app.services.searxng_compat import SearxngCompatService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def _sse_event(name: str, payload: dict) -> str:
-    return f"event: {name}\ndata: {json.dumps(payload)}\n\n"
 
 
 def get_orchestrator(request: Request) -> ResearchOrchestrator:
@@ -56,6 +49,10 @@ def get_searxng_compat_service(request: Request) -> SearxngCompatService:
     )
 
 
+def get_research_proxy(request: Request) -> ResearchProxyService:
+    return request.app.state.research_proxy
+
+
 @router.post("/")
 async def search_root(
     payload: PerplexitySearchRequest,
@@ -71,10 +68,12 @@ async def search_root(
     return response.model_dump(exclude_none=True)
 
 
-@router.post("/internal/search")
+@router.post("/internal/search", deprecated=True)
 async def search(payload: SearchRequest, orch: ResearchOrchestrator = Depends(get_orchestrator)):
-    response = await orch.execute_search(payload, endpoint="/research")
-    return response.model_dump()
+    response = await orch.execute_search(payload, endpoint="/search")
+    body = response.model_dump()
+    body["warnings"] = ["/internal/search is deprecated; use /search for concise search or /research for Vane-backed research"]
+    return body
 
 
 @router.post("/search")
@@ -94,82 +93,9 @@ async def perplexity_search(
 @router.post("/research")
 async def research_search(
     payload: ResearchRequest,
-    request: Request,
-    orch: ResearchOrchestrator = Depends(get_orchestrator),
+    proxy: ResearchProxyService = Depends(get_research_proxy),
 ):
-    # `/research` is the explicitly LLM-backed long-form path.
-    try:
-        orch.ensure_research_llm_available()
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    internal_request = SearchRequest(
-        query=payload.query,
-        mode="research",
-        source_mode=payload.source_mode,
-        depth=payload.depth,
-        max_iterations=payload.max_iterations,
-        include_citations=True,
-        include_debug=payload.include_debug,
-        include_legacy=payload.include_legacy,
-        strict_runtime=payload.strict_runtime,
-        user_context=payload.user_context,
-    )
-
-    stream_progress = request.query_params.get("stream") == "true"
-    if not stream_progress:
-        try:
-            response = await orch.execute_search(internal_request, endpoint="/research")
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        return response.model_dump()
-
-    # Pre-generate request id so error events carry proper identity
-    request_id = uuid.uuid4().hex[:8]
-
-    async def event_stream():
-        queue: asyncio.Queue[ProgressEvent | dict | None] = asyncio.Queue()
-
-        async def on_progress(event: ProgressEvent) -> None:
-            await queue.put(event)
-
-        async def run_search() -> None:
-            try:
-                response = await orch.execute_search(internal_request, progress_callback=on_progress, endpoint="/research")
-                await queue.put({"type": "result", "payload": response.model_dump()})
-            except Exception as exc:
-                await queue.put(
-                    ProgressEvent(
-                        type="error",
-                        state="error",
-                        request_id=request_id,
-                        mode="research",
-                        error=str(exc),
-                        message="Search failed",
-                    )
-                )
-            finally:
-                await queue.put(None)
-
-        task = asyncio.create_task(run_search())
-        try:
-            while True:
-                item = await queue.get()
-                if item is None:
-                    break
-                if isinstance(item, ProgressEvent):
-                    yield _sse_event(item.type, item.model_dump(exclude_none=True))
-                else:
-                    yield _sse_event(item["type"], item["payload"])
-        finally:
-            if not task.done():
-                task.cancel()
-
-    return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
-    )
+    return await proxy.streaming_response(payload)
 
 
 async def _handle_searxng_compat_search(

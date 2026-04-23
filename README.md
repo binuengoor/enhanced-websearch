@@ -1,6 +1,6 @@
 # Enhanced Websearch Service
 
-Standalone search and compatibility backend for Open WebUI Perplexity-style tooling.
+Standalone search, fetch, and Vane-proxy compatibility backend for Open WebUI Perplexity-style tooling.
 
 ## What this is
 
@@ -105,14 +105,15 @@ Unknown fields are ignored.
 
 ### POST /research
 
-Long-form research endpoint.
+Transparent Vane research proxy.
 
-Current direction:
+Behavior:
 
-- this route is being simplified toward a transparent Vane-backed flow
-- local long-form synthesis behavior still exists only as transitional implementation detail during the refactor
-
-This endpoint currently requires LLM support at runtime; it returns HTTP 400 instead of silently degrading when neither Vane nor the compiler is configured.
+- validates the local `ResearchRequest` contract
+- translates the request into Vane `POST /api/search`
+- always sends `stream: true` upstream
+- proxies upstream SSE output, status code, and selected headers as-is
+- does not run local planner/compiler/orchestrator synthesis
 
 Request body:
 
@@ -127,20 +128,28 @@ Request body:
   "user_context": {}
 }
 
-Compatibility note:
+Vane mapping:
 
-- intended public depth vocabulary is `balanced|quality`
-- `depth=quick` is still accepted today for compatibility and transitional clients
-- internal execution still uses backend orchestration modes (`fast|research|deep`) behind the public endpoint
+- `query` -> `query`
+- `source_mode` -> `sources` (`web`, `academic`, `discussions`)
+- `depth` -> `optimizationMode` (`quick -> speed`, `balanced -> balanced`, `quality -> quality`)
+- provider ids and model keys come from Vane config
 
-Response returns the full structured research object (`SearchResponse`):
+Response:
 
-- direct_answer, summary, findings
-- citations, sources
-- diagnostics (query plan, provider trace, cache)
-- timings and confidence
+- `text/event-stream`
+- upstream Vane body is passed through without local normalization
+- HTTP 504 is returned for upstream timeouts
+- upstream non-2xx responses are surfaced with the upstream status code and a cleaned error detail
 
 ### POST /internal/search
+
+Deprecated internal endpoint.
+
+- no real caller is documented in this repo
+- retained temporarily as a compatibility shim for local concise search only
+- returns a deprecation warning in the response body
+
 
 Request body:
 
@@ -259,7 +268,7 @@ Available tools:
 Tool guidance:
 
 - `search` is the concise search path with only the few useful knobs kept (`max_results`, `display_server_time`, `search_mode`, `search_recency_filter`, `search_recency_amount`, `country`). `search_mode` accepts `auto`, `web`, `academic`, or `sec`; `auto` is normalized to the default behavior and sent to the backend the same as omitting the field; `search_recency_filter` accepts `none`, `hour`, `day`, `week`, `month`, or `year`; `search_recency_amount` (default `1`) lets you request multi-unit windows such as `3` + `month`.
-- `research` is the explicit long-form research path with only the needed research knobs (`source_mode`, `depth`, `max_iterations`, `include_legacy`, `strict_runtime`, `include_debug`). `source_mode` accepts `web`, `academia`, `social`, or `all`; `depth` currently accepts `quick`, `balanced`, or `quality`, but `quick` should be treated as compatibility-only rather than the intended long-term public contract.
+- `research` proxies the backend `/research` route, which in turn proxies Vane streaming research output. `source_mode` accepts `web`, `academia`, `social`, or `all`; `depth` accepts `quick`, `balanced`, or `quality`, with `quick` treated as compatibility-only.
 - `fetch_page` and `extract_page_structure` are for page-level inspection and debugging.
 - `health_check`, `providers_health`, and `service_metrics` are for operational checks. Prefer `service_metrics` for the single aggregated view.
 

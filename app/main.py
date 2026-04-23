@@ -26,6 +26,7 @@ from app.services.report_exporter import ReportExporter
 from app.services.ranking import Ranker
 from app.services.vane import VaneClient
 from app.services.run_history import RecentRunHistory
+from app.services.research_proxy import ResearchProxyService
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,7 @@ class Container:
     orchestrator: ResearchOrchestrator
     provider_router: ProviderRouter
     report_exporter: ReportExporter
+    research_proxy: ResearchProxyService
 
 
 container = Container()
@@ -84,9 +86,9 @@ def _build_orchestrator(config: AppConfig, router: ProviderRouter) -> ResearchOr
         url=config.vane.url,
         timeout_s=config.vane.timeout_s,
         default_optimization_mode=config.vane.default_optimization_mode,
-        chat_provider_id_env=config.vane.chat_provider_id_env,
+        chat_provider_id_env="VANE_CHAT_PROVIDER_ID",
         chat_model_key=config.vane.chat_model_key,
-        embedding_provider_id_env=config.vane.embedding_provider_id_env,
+        embedding_provider_id_env="VANE_EMBED_PROVIDER_ID",
         embedding_model_key=config.vane.embedding_model_key,
     )
 
@@ -127,14 +129,17 @@ async def lifespan(app: FastAPI):
 
     container.config = config
     report_exporter = orchestrator.report_exporter
+    research_proxy = ResearchProxyService(config=config)
 
     container.provider_router = router
     container.orchestrator = orchestrator
     container.report_exporter = report_exporter
+    container.research_proxy = research_proxy
     app.state.config = config
     app.state.provider_router = router
     app.state.orchestrator = orchestrator
     app.state.report_exporter = report_exporter
+    app.state.research_proxy = research_proxy
 
     enabled_providers = [provider.name for provider in config.providers if provider.enabled]
     disabled_providers = [provider.name for provider in config.providers if not provider.enabled]
@@ -155,19 +160,18 @@ async def lifespan(app: FastAPI):
         config.cache.ttl_recency_s,
     )
     logger.info(
-        "startup vane enabled=%s url=%s default_mode=%s chat_model_key=%s embedding_model_key=%s",
+        "startup vane enabled=%s url=%s default_mode=%s chat_provider_id_set=%s embedding_provider_id_set=%s chat_model_key=%s embedding_model_key=%s",
         config.vane.enabled,
         config.vane.url or "none",
         config.vane.default_optimization_mode,
+        bool(config.vane.chat_provider_id),
+        bool(config.vane.embedding_provider_id),
         config.vane.chat_model_key,
         config.vane.embedding_model_key,
     )
     logger.info(
-        "startup research_llm_ready=%s compiler_enabled=%s compiler_base_url=%s compiler_model_id_set=%s",
+        "startup research_llm_ready=%s",
         config.research_llm_ready,
-        config.compiler.enabled,
-        config.compiler.base_url or "none",
-        bool(config.compiler.model_id),
     )
 
     logger.info("Enhanced websearch service started")

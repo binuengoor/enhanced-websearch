@@ -31,6 +31,7 @@ Purpose:
 - `30-mp-08-quality-gates-test-plan.md` - initial MP-08 benchmark, fixture, and quality-gate plan
 - `36-research-output-quality-plan.md` - audit of current `/research` output degradation and corrective direction
 - `37-mp-10-research-output-preservation-implementation-plan.md` - executable backlog and milestone plan for preserving substantive Vane longform output
+- `38-searxng-compat-endpoint-plan.md` - implementation plan for a compatibility-only `/compat/searxng` adapter backed by the existing provider router
 
 ## Core position
 

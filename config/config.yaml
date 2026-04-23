@@ -109,9 +109,9 @@ vane:
   enabled: ${VANE_ENABLED}
   url: ${VANE_URL}
   timeout_s: 25
-  chat_provider_id_env: VANE_CHAT_PROVIDER_ID
+  chat_provider_id: ${VANE_CHAT_PROVIDER_ID}
   chat_model_key: auto-main
-  embedding_provider_id_env: VANE_EMBED_PROVIDER_ID
+  embedding_provider_id: ${VANE_EMBED_PROVIDER_ID}
   embedding_model_key: Xenova/nomic-embed-text-v1
 
 compiler:

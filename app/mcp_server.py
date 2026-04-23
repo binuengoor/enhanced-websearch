@@ -108,7 +108,7 @@ mcp = FastMCP(
     stateless_http=True,
     instructions=(
         "Use this server for search, page fetches, structured extraction, and provider health. "
-        "The research tool returns rich long-form research payloads; "
+        "The research tool proxies Vane's streamed research output as-is; "
         "the search tool returns concise results."
     ),
     lifespan=lifespan,
@@ -176,16 +176,18 @@ async def _backend_get(ctx: Context, path: str) -> dict[str, Any]:
 async def research(
     query: str,
     source_mode: Literal["web", "academia", "social", "all"] = "web",
-    depth: Literal["balanced", "quality"] = "quality",
+    depth: Literal["quick", "balanced", "quality"] = "quality",
     max_iterations: int = 4,
     include_legacy: bool = False,
     strict_runtime: bool = False,
     include_debug: bool = False,
     ctx: Context = None,
 ) -> dict[str, Any]:
-    """Run long-form research via /research and return the rich result payload.
+    """Proxy Vane-backed research via /research.
 
-    Use depth="balanced" or depth="quality".
+    This tool forwards the request to the backend research proxy. The backend always
+    uses upstream streaming mode; non-streaming callers receive the upstream response
+    body collected by the MCP backend client.
     """
     payload = {
         "query": query,
