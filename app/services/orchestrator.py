@@ -396,45 +396,17 @@ class ResearchOrchestrator:
         )
 
         for query in queries:
-            quick = self.planner.quick_profile(
-                query=query,
-                max_results=req.max_results,
-                has_filters=bool(req.search_domain_filter or req.search_language_filter or req.country),
-                recency=bool(req.search_recency_filter),
-                search_mode=req.search_mode,
+            quick = {
+                "mode": "fast",
+                "depth": self._select_depth(req),
+                "max_iterations": self._select_iterations(req),
+            }
+            logger.info(
+                "event=search_profile_selected request_id=%s source=deterministic depth=%s max_iterations=%s",
+                request_id,
+                quick["depth"],
+                quick["max_iterations"],
             )
-
-            if self.config.planner.llm_fallback_enabled:
-                llm_quick = await self.compiler.choose_search_profile(
-                    query=query,
-                    max_results=req.max_results,
-                    has_filters=bool(req.search_domain_filter or req.search_language_filter or req.country),
-                    recency=bool(req.search_recency_filter),
-                    search_mode=req.search_mode,
-                    heuristic=quick,
-                )
-                if llm_quick:
-                    quick = llm_quick
-                    logger.info(
-                        "event=search_profile_selected request_id=%s source=llm depth=%s max_iterations=%s",
-                        request_id,
-                        quick.get("depth"),
-                        quick.get("max_iterations"),
-                    )
-                else:
-                    logger.info(
-                        "event=search_profile_selected request_id=%s source=heuristic_fallback depth=%s max_iterations=%s",
-                        request_id,
-                        quick.get("depth"),
-                        quick.get("max_iterations"),
-                    )
-            else:
-                logger.info(
-                    "event=search_profile_selected request_id=%s source=heuristic depth=%s max_iterations=%s",
-                    request_id,
-                    quick.get("depth"),
-                    quick.get("max_iterations"),
-                )
 
             remaining_results = max(1, total_results_budget - len(results))
             internal = SearchRequest(
@@ -473,20 +445,6 @@ class ResearchOrchestrator:
             items = self._apply_perplexity_filters(items, req)
             if not items:
                 raise ValueError("search upstream failure: all candidate results were filtered out")
-
-            compiler_input = []
-            for idx, item in enumerate(items, start=1):
-                payload = item.model_dump(exclude_none=True)
-                payload["candidate_id"] = idx
-                compiler_input.append(payload)
-            compiled = await self.compiler.compile_perplexity_results(
-                query=query,
-                candidates=compiler_input,
-                max_results=remaining_results,
-                max_tokens_per_page=req.max_tokens_per_page,
-            )
-            if compiled:
-                items = [PerplexitySearchResult.model_validate(item) for item in compiled]
 
             items = self._apply_token_limits(items, req.max_tokens_per_page, req.max_tokens)
             for item in items:
@@ -831,20 +789,30 @@ class ResearchOrchestrator:
         return "web"
 
     def _select_depth(self, req: PerplexitySearchRequest) -> str:
+        if req.search_mode == "academic":
+            return "quality"
+        if req.search_recency_filter:
+            return "quick"
         if req.max_tokens_per_page and req.max_tokens_per_page >= 4096:
             return "quality"
         if req.max_tokens and req.max_tokens >= 50000:
             return "quality"
         if req.search_domain_filter or req.search_language_filter or req.country:
             return "balanced"
-        return "balanced"
+        if req.max_results > 8:
+            return "balanced"
+        return "quick"
 
     def _select_iterations(self, req: PerplexitySearchRequest) -> int:
+        if req.search_mode == "academic":
+            return 2
         if req.max_tokens and req.max_tokens >= 50000:
             return 4
         if req.max_tokens_per_page and req.max_tokens_per_page >= 4096:
             return 3
-        return 2
+        if req.search_domain_filter or req.search_language_filter or req.country:
+            return 2
+        return 1
 
     def _perplexity_results_from_response(self, response: SearchResponse) -> List[PerplexitySearchResult]:
         citation_map: Dict[str, Dict[str, Any]] = {
