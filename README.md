@@ -29,7 +29,7 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 - app/api/routes.py: HTTP endpoints
 - app/core/config.py: YAML + env config loading
 - app/providers/: provider implementations + router
-- app/services/: fetch/extract, ranking, Vane integration, and remaining local search/orchestrator code
+- app/services/: fetch/extract, ranking, and remaining local search service code
 - app/cache/memory_cache.py: in-memory TTL cache
 - config/config.yaml: final service configuration used by compose
 - config/config.sample.yaml: template you can copy from
@@ -114,7 +114,7 @@ Behavior:
 - translates the request into Vane `POST /api/search`
 - always sends `stream: true` upstream
 - proxies upstream SSE output, status code, and selected headers as-is
-- does not run local planner/compiler/orchestrator synthesis
+- does not run local synthesis or response remapping
 
 Request body:
 
@@ -276,13 +276,12 @@ Vane research setup:
 Startup logs include:
 
 - active and disabled providers
-- routing policy and cooldown settings
+- routing cooldown and failure-threshold settings
 - whether Vane is enabled and its configured model/provider ids are present
 - cache settings
 
 YAML sections:
 
-- service
 - routing
 - search_limits
 - providers
