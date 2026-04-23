@@ -164,28 +164,39 @@ async def _backend_post(ctx: Context, path: str, payload: dict[str, Any]) -> dic
             events: list[dict[str, Any]] = []
             data_lines: list[str] = []
             event_type = "message"
-            async for line in response.aiter_lines():
-                if line.startswith("event:"):
-                    event_type = line.split(":", 1)[1].strip() or "message"
-                elif line.startswith("data:"):
-                    data_lines.append(line.split(":", 1)[1].lstrip())
-                elif not line.strip():
-                    if data_lines:
-                        data = "\n".join(data_lines)
-                        try:
-                            parsed = json.loads(data)
-                        except json.JSONDecodeError:
-                            parsed = data
-                        events.append({"event": event_type, "data": parsed})
-                    data_lines = []
+
+            def _append_sse_event() -> None:
+                nonlocal data_lines, event_type
+                if not data_lines:
                     event_type = "message"
-            if data_lines:
+                    return
                 data = "\n".join(data_lines)
                 try:
                     parsed = json.loads(data)
                 except json.JSONDecodeError:
                     parsed = data
                 events.append({"event": event_type, "data": parsed})
+                data_lines = []
+                event_type = "message"
+
+            async for raw_line in response.aiter_lines():
+                line = raw_line.strip()
+                if not line:
+                    _append_sse_event()
+                    continue
+
+                try:
+                    events.append({"event": "message", "data": json.loads(line)})
+                    continue
+                except json.JSONDecodeError:
+                    pass
+
+                if line.startswith("event:"):
+                    event_type = line.split(":", 1)[1].strip() or "message"
+                elif line.startswith("data:"):
+                    data_lines.append(line.split(":", 1)[1].lstrip())
+
+            _append_sse_event()
             return {"events": events, "event_count": len(events)}
         return response.json()
     except httpx.TimeoutException as exc:
