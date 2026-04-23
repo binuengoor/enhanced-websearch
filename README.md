@@ -47,13 +47,13 @@ Add a provider entry like this to `config/config.yaml`:
   enabled: true
   weight: 1
   timeout_s: 12
-  base_url: ${LITELLM_SEARCH_BASE_URL}
+  base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
   litellm_provider: jina-search
 ```
 
 Notes:
 - `litellm_provider` auto-expands to `path: /search/<litellm_provider>` during config load.
-- `api_key_env` defaults to `LITELLM_API_KEY` for `litellm-search` providers unless explicitly overridden.
+- `api_key_env` defaults to `EWS_LITELLM_API_KEY` for `litellm-search` providers unless explicitly overridden.
 - You can still set `path` manually if a provider needs a nonstandard LiteLLM route.
 - If a provider is not exposed through the existing LiteLLM search shape, it still needs a new adapter in `app/providers/`.
 
@@ -269,8 +269,7 @@ Optional bearer token:
 MCP host-header behavior:
 
 - FastMCP matches the full `Host` header, and the service now allows both bare hosts and wildcard-port entries.
-- To allow local/LAN MCP clients, set `EWS_MCP_ALLOWED_HOSTS` with either bare hosts or wildcard-port entries (for example `localhost`, `localhost:*`, `127.0.0.1`, `127.0.0.1:*`, `10.1.1.150`, `10.1.1.150:*`).
-- Plain host values are normalized to both bare and wildcard-port form by the service.
+- MCP transport security now defaults to permissive local/LAN-friendly values; custom allowlist envs are no longer required for normal deployments.
 
 ## Planning foundation
 
@@ -321,9 +320,9 @@ In-memory cache for v1:
 
 LiteLLM gateway setup defaults:
 
-- use one shared key: `LITELLM_API_KEY`
+- use one shared key: `EWS_LITELLM_API_KEY`
 - enable or disable providers in `config/config.yaml`
-- each `litellm-search` provider uses `LITELLM_SEARCH_BASE_URL` and defaults to `LITELLM_API_KEY`
+- each `litellm-search` provider uses `EWS_LITELLM_SEARCH_BASE_URL` and defaults to `EWS_LITELLM_API_KEY`
 
 Vane research setup:
 

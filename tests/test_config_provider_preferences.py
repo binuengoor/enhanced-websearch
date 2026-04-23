@@ -80,7 +80,7 @@ class ProviderPreferencesConfigTests(unittest.TestCase):
 
         self.assertEqual(len(config.providers), 1)
         self.assertEqual(config.providers[0].path, "/search/brave-search")
-        self.assertEqual(config.providers[0].api_key_env, "LITELLM_API_KEY")
+        self.assertEqual(config.providers[0].api_key_env, "EWS_LITELLM_API_KEY")
 
     def test_research_llm_ready_when_vane_is_fully_configured(self):
         path = self._write_config(

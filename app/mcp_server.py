@@ -84,7 +84,7 @@ def _load_mcp_config() -> MCPConfig:
         backend_url=os.getenv("EWS_MCP_BACKEND_URL", os.getenv("EWS_SERVICE_BASE_URL", "http://enhanced-websearch:8091")),
         request_timeout_s=int(os.getenv("EWS_MCP_REQUEST_TIMEOUT", os.getenv("EWS_REQUEST_TIMEOUT", "25"))),
         default_mode=os.getenv("EWS_MCP_DEFAULT_MODE", "auto"),
-        bearer_token=os.getenv("EWS_BEARER_TOKEN", ""),
+        bearer_token=(os.getenv("EWS_AUTH_TOKEN", "") if os.getenv("EWS_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"} else ""),
     )
 
 
@@ -117,9 +117,9 @@ mcp.settings.streamable_http_path = "/"
 
 # FastMCP transport_security nested env parsing for list fields can be unreliable
 # across runtimes. Apply explicit env-driven overrides here for predictable behavior.
-_allowed_hosts = _csv_env("EWS_MCP_ALLOWED_HOSTS")
-_allowed_origins = _csv_env("EWS_MCP_ALLOWED_ORIGINS")
-_dns_rebinding = os.getenv("EWS_MCP_DNS_REBINDING_PROTECTION")
+_allowed_hosts: list[str] = []
+_allowed_origins: list[str] = []
+_dns_rebinding = None
 
 if mcp.settings.transport_security is not None:
     normalized_hosts = _normalized_allowed_hosts(_allowed_hosts)

@@ -40,55 +40,55 @@ providers:
     enabled: true
     weight: 3
     timeout_s: 12
-    base_url: ${SEARXNG_BASE_URL}
+    base_url: ${EWS_SEARXNG_BASE_URL}
   - name: brave-search
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/brave-search
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
   - name: serper
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/serper
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
   - name: exa
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/exa
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
   - name: tavily
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/tavily
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
   - name: firecrawl
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/firecrawl
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
   - name: linkup
     kind: litellm-search
     enabled: true
     weight: 1
     timeout_s: 12
-    base_url: ${LITELLM_SEARCH_BASE_URL}
+    base_url: ${EWS_LITELLM_SEARCH_BASE_URL}
     path: /search/linkup
-    api_key_env: LITELLM_API_KEY
+    api_key_env: EWS_LITELLM_API_KEY
 
 cache:
   enabled: true
@@ -102,7 +102,7 @@ scraping:
   request_timeout_s: 18
   max_content_chars: 30000
   min_content_chars: 80
-  flaresolverr_url: ${FLARESOLVERR_URL}
+  flaresolverr_url: ${EWS_FLARESOLVERR_URL}
 
 vane:
   enabled: true

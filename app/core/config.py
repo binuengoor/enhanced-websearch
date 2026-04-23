@@ -177,7 +177,7 @@ def _apply_env_overrides(payload: dict) -> dict:
 
     payload.setdefault("scraping", {})
     payload["scraping"]["flaresolverr_url"] = _env(
-        "FLARESOLVERR_URL",
+        "EWS_FLARESOLVERR_URL",
         payload["scraping"].get("flaresolverr_url", ""),
     )
 
@@ -210,7 +210,7 @@ def _apply_env_overrides(payload: dict) -> dict:
         payload["vane"].get("embedding_model_key", "Xenova/nomic-embed-text-v1"),
     )
 
-    shared_litellm_key_env = "LITELLM_API_KEY"
+    shared_litellm_key_env = "EWS_LITELLM_API_KEY"
     providers = payload.get("providers") or []
     for provider in providers:
         name = provider.get("name", "").strip()
