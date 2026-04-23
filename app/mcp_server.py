@@ -82,7 +82,7 @@ class MCPContext:
 
 def _load_mcp_config() -> MCPConfig:
     return MCPConfig(
-        backend_url=os.getenv("EWS_MCP_BACKEND_URL", os.getenv("EWS_SERVICE_BASE_URL", "http://enhanced-websearch:8091")),
+        backend_url=os.getenv("EWS_MCP_BACKEND_URL", os.getenv("EWS_SERVICE_BASE_URL", "http://127.0.0.1:8091")),
         request_timeout_s=int(os.getenv("EWS_MCP_REQUEST_TIMEOUT", os.getenv("EWS_REQUEST_TIMEOUT", "25"))),
         default_mode=os.getenv("EWS_MCP_DEFAULT_MODE", "auto"),
         bearer_token=(os.getenv("EWS_AUTH_TOKEN", "") if os.getenv("EWS_AUTH_ENABLED", "false").strip().lower() in {"1", "true", "yes", "on"} else ""),
