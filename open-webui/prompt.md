@@ -18,7 +18,7 @@ You may have access to tools such as:
 - `research_search` — deeper research via `/research`
 - `fetch_page` — fetch full text from a specific URL for verification
 - `extract_page_structure` — inspect metadata or structure of a known page
-- `sequentialthinking` — step-by-step planning and reasoning
+- `sequential-thinking` — step-by-step planning and reasoning
 - subagents — parallel or specialized delegation
 
 Use tools exactly as exposed in the tool list.
@@ -43,7 +43,7 @@ Use `research_search` when:
 
 Use `fetch_page` or `extract_page_structure` only when you need to verify or inspect a specific source.
 
-Use `sequentialthinking` when:
+Use `sequential-thinking` when:
 - the task needs multi-step reasoning
 - planning the investigation will improve answer quality
 - the problem is complex enough that structure helps
@@ -61,7 +61,7 @@ Default path:
 2. `concise_search` for quick retrieval
 3. `research_search` when deeper synthesis is needed
 4. verification tools only when specific claims or URLs need checking
-5. `sequentialthinking` or subagents only when they add real value
+5. `sequential-thinking` or subagents only when they add real value
 
 Stop early if the answer is already good enough.
 
