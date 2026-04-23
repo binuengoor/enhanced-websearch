@@ -1,21 +1,24 @@
 # Enhanced Websearch Service
 
-Standalone research backend for Open WebUI Perplexity-style tooling.
+Standalone search and compatibility backend for Open WebUI Perplexity-style tooling.
 
 ## What this is
 
-This service is the canonical research engine. It owns:
+This service is the local search/fetch compatibility backend. It owns:
 
-- query normalization and planning
+- deterministic `/search` behavior and query normalization
 - mode semantics (auto, fast, deep, research)
 - provider routing with cooldowns, fallback, and budgets
 - search result normalization and fusion
 - page fetch/extraction and optional PDF extraction
-- optional Vane deep synthesis
-- evidence/citation assembly
-- structured response construction
-- diagnostics, provider traces, cache reporting, recent-run history, and research report export
-- MCP tools mounted on the same ASGI app at `/mcp`
+- compatibility surfaces such as `/compat/searxng`
+- diagnostics, provider traces, cache reporting, recent-run history, and MCP tools mounted on the same ASGI app at `/mcp`
+
+Refactor note:
+
+- `/search` stays local and deterministic.
+- `/research` is being simplified toward a transparent Vane-backed flow.
+- older local planner/compiler/orchestrator research machinery still exists during the transition, but it should be treated as transitional rather than the target architecture.
 
 The Open WebUI workspace tool becomes a thin HTTP wrapper.
 
@@ -25,7 +28,7 @@ The Open WebUI workspace tool becomes a thin HTTP wrapper.
 - app/api/routes.py: HTTP endpoints
 - app/core/config.py: YAML + env config loading
 - app/providers/: provider implementations + router
-- app/services/: planner, ranker, fetch/extract, vane, orchestrator
+- app/services/: fetch/extract, ranking, Vane integration, and transitional planner/orchestrator code still being simplified
 - app/cache/memory_cache.py: in-memory TTL cache
 - config/config.yaml: final service configuration used by compose
 - config/config.sample.yaml: template you can copy from
@@ -102,8 +105,14 @@ Unknown fields are ignored.
 
 ### POST /research
 
-Long-form research endpoint for multi-step synthesis with citations and diagnostics.
-This endpoint now requires LLM support at runtime; it returns HTTP 400 instead of silently degrading when neither Vane nor the compiler is configured.
+Long-form research endpoint.
+
+Current direction:
+
+- this route is being simplified toward a transparent Vane-backed flow
+- local long-form synthesis behavior still exists only as transitional implementation detail during the refactor
+
+This endpoint currently requires LLM support at runtime; it returns HTTP 400 instead of silently degrading when neither Vane nor the compiler is configured.
 
 Request body:
 
@@ -267,7 +276,7 @@ MCP host-header behavior:
 
 ## Planning foundation
 
-`/internal/search` and `/research` now expose two thin structured planning artifacts in diagnostics:
+`/internal/search` and `/research` currently expose two thin structured planning artifacts in diagnostics:
 
 - `routing_decision`: requested mode, selected mode, source of the decision, heuristic reason, and detected query profile
 - `research_plan`: bounded step list with the initial query-expansion plan and max iteration budget
@@ -276,8 +285,8 @@ Current behavior remains intentionally conservative:
 
 - mode selection is still heuristic-first
 - `/search` remains on the concise fast path
-- long-form execution still uses the existing orchestrator loop
-- the new schema is there to support later LLM-assisted routing without changing endpoint contracts again
+- long-form execution is in transition and should not be treated as a stable local orchestration contract
+- the new schema is there to keep endpoint contracts stable while the implementation is simplified
 
 ## Provider routing behavior
 
@@ -325,7 +334,7 @@ LiteLLM gateway setup defaults:
   - `EWS_PROVIDER_LINKUP_ENABLED=true|false`
 - when a flag is unset, YAML `providers[].enabled` is used
 
-Optional LLM result compiler (Perplexity `/search` response refinement and one valid `/research` LLM backend):
+Transitional LLM compiler settings (still read by the current code, but headed toward removal as `/search` stays deterministic and `/research` moves to Vane proxying):
 
 - set `EWS_COMPILER_ENABLED=true` to enable
 - set `EWS_COMPILER_MODEL_ID` to the LiteLLM chat model id to use
@@ -335,11 +344,12 @@ Optional LLM result compiler (Perplexity `/search` response refinement and one v
 - the same compiler is also used as a final research quality gate; if a long-form `research` response looks thin or generic, the service can fall back to a quick grounded search path before returning
 - `/research` requires at least one configured LLM path: either Vane (`VANE_ENABLED=true` plus `VANE_URL`) or the compiler (`EWS_COMPILER_ENABLED=true` plus `EWS_COMPILER_BASE_URL` and `EWS_COMPILER_MODEL_ID`)
 
-Optional LLM planner fallback (`/search` profile selection):
+Transitional LLM planner fallback (`/search` profile selection):
 
 - set `EWS_PLANNER_LLM_FALLBACK_ENABLED=true` to allow LLM-assisted selection of `depth` and `max_iterations`
 - default is disabled and remains heuristic-only
 - if LLM planner selection fails for any reason, `/search` automatically falls back to the heuristic profile
+- treat this as compatibility wiring during the simplification work, not as the preferred long-term `/search` design
 
 When compiler output is accepted, each result may also include optional grounding metadata:
 
@@ -350,10 +360,10 @@ When compiler output is accepted, each result may also include optional groundin
 
 Vane defaults:
 
-- VANE_ENABLED controls whether deep/research flows can call Vane
-- if Vane is disabled, `/research` can still run only when the compiler is configured; `/search` remains available without either LLM path
-- VANE_DEFAULT_MODE defaults to balanced and can be set to speed, balanced, or quality
-- deep/research requests can still escalate to quality when the query warrants it
+- `VANE_ENABLED` controls whether research flows can call Vane
+- during the transition, `/research` can still run when the compiler is configured even if Vane is disabled, because the old local path has not been fully removed yet
+- `VANE_DEFAULT_MODE` defaults to balanced and can be set to speed, balanced, or quality
+- expect Vane to become the primary `/research` backend as the simplification lands
 
 Startup logs include:
 
@@ -372,7 +382,8 @@ YAML sections:
 - cache
 - scraping
 - vane
-- planner
+- compiler (transitional)
+- planner (transitional)
 - logging
 
 Provider preferences let you bias routing per mode without changing provider weights:

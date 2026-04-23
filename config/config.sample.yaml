@@ -114,6 +114,8 @@ vane:
   embedding_provider_id_env: VANE_EMBED_PROVIDER_ID
   embedding_model_key: Xenova/nomic-embed-text-v1
 
+# Transitional settings retained while the old local-research path is still
+# being removed. Prefer Vane for `/research`; keep `/search` deterministic.
 compiler:
   enabled: ${EWS_COMPILER_ENABLED}
   base_url: ${EWS_COMPILER_BASE_URL}
