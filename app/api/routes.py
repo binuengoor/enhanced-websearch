@@ -77,6 +77,21 @@ async def perplexity_search(
     return response.model_dump(exclude_none=True)
 
 
+@router.post("/v1/search")
+async def perplexity_search_v1(
+    payload: PerplexitySearchRequest,
+    orch: SearchService = Depends(get_orchestrator),
+):
+    """Alias for OpenClaw Perplexity plugin compatibility (calls /v1/search)"""
+    try:
+        response = await orch.execute_perplexity_search(payload)
+    except ValueError as exc:
+        query_text = payload.query if isinstance(payload.query, str) else "; ".join(payload.query)
+        orch.record_failed_run(endpoint="/v1/search", query=query_text, mode="fast", errors=[str(exc)])
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return response.model_dump(exclude_none=True)
+
+
 @router.post("/research")
 async def research_search(
     payload: ResearchRequest,

@@ -161,7 +161,7 @@ def _perplexity_error(status_code: int, error_type: str, message: str, param: st
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    if request.url.path == "/search":
+    if request.url.path in ("/search", "/v1/search"):
         first_error = exc.errors()[0] if exc.errors() else {}
         loc = first_error.get("loc", [])
         param = loc[-1] if isinstance(loc, list) and loc else None
@@ -172,7 +172,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    if request.url.path == "/search":
+    if request.url.path in ("/search", "/v1/search"):
         detail = exc.detail if isinstance(exc.detail, str) else str(exc.detail)
         if exc.status_code == 401:
             return _perplexity_error(401, "authentication_error", detail)
@@ -188,8 +188,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    if request.url.path == "/search":
-        logger.exception("Unhandled /search error: %s", exc)
+    if request.url.path in ("/search", "/v1/search"):
+        logger.exception("Unhandled /v1/search error: %s", exc)
         return _perplexity_error(500, "internal_error", "Internal server error")
     logger.exception("Unhandled error: %s", exc)
     return JSONResponse({"detail": "Internal server error"}, status_code=500)
